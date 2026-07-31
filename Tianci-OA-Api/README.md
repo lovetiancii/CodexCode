@@ -15,7 +15,7 @@ Tianci OA 的 .NET 10 模块化单体后端。解决方案严格分为 Domain、
 ## 本地运行
 
 1. 安装 .NET 10 SDK、MySQL 8、Redis。
-2. 执行 `database/init.sql`。脚本只创建不可登录的 `admin`，不会写入默认密码。
+2. 执行 `database/init.sql`。开发默认账号为 `admin`，默认密码为 `Tianci@OA2026!`；首次登录后必须立即修改。
 3. 通过环境变量覆盖连接串、JWT 密钥和初始化令牌：
 
 ```powershell
@@ -26,7 +26,7 @@ $env:Initialization__Token='一次性高强度随机令牌'
 dotnet run --project src/Tianci.OA.WebApi
 ```
 
-4. 首次调用 `POST /api/v1/auth/initialize-admin`，请求头带 `X-Initialization-Token`，Body 为 `{"password":"高强度密码"}`。成功后删除初始化令牌。
+4. 使用默认账号登录后立即通过用户管理重置管理员密码。`POST /api/v1/auth/initialize-admin` 仅保留给采用“禁用种子 + 一次性令牌”策略的定制部署。
 5. 登录后在 Swagger 的 Bearer 鉴权中使用 Access Token。
 
 ## 验证
@@ -46,6 +46,8 @@ docker compose up --build -d
 ```
 
 Web 管理端默认位于 `http://localhost`，API 也可通过 `http://localhost:8080` 访问。Web 容器由 Nginx 提供静态资源并将 `/api` 反向代理到 API；文件保存在命名卷中，MySQL 和 Redis 未映射到宿主公网端口。
+
+默认管理员仅用于首次开发启动。任何共享、测试或生产环境都必须在开放网络访问前修改默认密码。
 
 ## 响应与 ID
 

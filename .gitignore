@@ -31,4 +31,4 @@ _ReSharper*/
 .idea/
 #Nuget packages folder
 packages/
-/.pnpm-store/v11/*
+/.pnpm-store/

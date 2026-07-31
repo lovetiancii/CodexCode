@@ -512,7 +512,9 @@ ON DUPLICATE KEY UPDATE `name`=VALUES(`name`),`status`=1,`is_system`=1;
 INSERT IGNORE INTO `sys_user`
 (`id`,`username`,`display_name`,`password_hash`,`status`,`requires_initialization`,`security_stamp`,`created_by`,`updated_by`)
 VALUES
-(900000000000000002,'admin','系统管理员',NULL,0,1,'INITIALIZATION_REQUIRED',NULL,NULL);
+(900000000000000002,'admin','系统管理员',
+ 'AQAAAAIAAYagAAAAEEMg8XvCJHljSimZF++uifAeyygQdjY+q+ogAd0SycYdj0X/EHjbIjyPnRuCHhtWaA==',
+ 1,0,'DEV_DEFAULT_CREDENTIAL_V1',NULL,NULL);
 
 INSERT INTO `sys_menu`
 (`id`,`parent_id`,`type`,`name`,`route_path`,`component`,`permission_code`,`sort_order`,`visible`,`status`)
@@ -539,8 +541,7 @@ VALUES
 (900000000000000045,900000000000000001,900000000000000023,NULL)
 ON DUPLICATE KEY UPDATE `menu_id`=VALUES(`menu_id`);
 
--- Security invariant: a newly seeded account cannot log in. INSERT IGNORE ensures
--- rerunning this script never resets an administrator that was securely initialized.
--- Application startup must
--- atomically set a PasswordHasher hash, rotate security_stamp, clear
--- requires_initialization and enable status after a secure one-time setup.
+-- Development bootstrap credential: admin / Tianci@OA2026!
+-- password_hash is an ASP.NET Core PasswordHasher (PBKDF2) result, never plaintext.
+-- Change this password immediately after first login. INSERT IGNORE ensures rerunning
+-- this script never resets an existing administrator's password.
