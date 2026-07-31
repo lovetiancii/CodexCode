@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.ComponentModel.DataAnnotations;
 using Tianci.OA.Application.Abstractions;
 using Tianci.OA.Application.Common;
@@ -80,8 +81,11 @@ public sealed class RecruitmentService(
     public async Task<PagedResult<ResumeDto>> ListAsync(ResumeQuery q, CancellationToken ct)
     {
         var keyword = q.Keyword?.Trim() ?? ""; var pid = IdParser.ParseNullable(q.PositionId, "positionId"); var page = new PageRequest(q.PageNumber, q.PageSize);
-        var result = await resumes.PageAsync(x => !x.IsDeleted && (keyword == "" || x.Name.Contains(keyword) || x.Phone.Contains(keyword) || (x.Email != null && x.Email.Contains(keyword)))
-            && (!pid.HasValue || x.AppliedPositionId == pid) && (!q.Status.HasValue || x.Status == q.Status), page.SafePageNumber, page.SafePageSize, x => x.UpdatedAt, true, ct);
+        Expression<Func<Resume, bool>> predicate = x => !x.IsDeleted &&
+            (keyword == "" || x.Name.Contains(keyword) || x.Phone.Contains(keyword) || (x.Email != null && x.Email.Contains(keyword)));
+        if (pid.HasValue) { var positionId = pid.Value; predicate = predicate.And(x => x.AppliedPositionId == positionId); }
+        if (q.Status.HasValue) { var status = q.Status.Value; predicate = predicate.And(x => x.Status == status); }
+        var result = await resumes.PageAsync(predicate, page.SafePageNumber, page.SafePageSize, x => x.UpdatedAt, true, ct);
         return new(result.Items.Select(ToDto).ToArray(), page.SafePageNumber, page.SafePageSize, result.Total);
     }
     public async Task<ResumeDto> GetAsync(string id, CancellationToken ct) => ToDto(await RequiredResume(id, ct));

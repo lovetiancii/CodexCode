@@ -1,7 +1,6 @@
 bin/
 obj/
 TestResults/
-App_Data/
 .env
 *.user
 *.log

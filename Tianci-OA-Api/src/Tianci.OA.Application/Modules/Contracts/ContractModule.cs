@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.ComponentModel.DataAnnotations;
 using Tianci.OA.Application.Abstractions;
 using Tianci.OA.Application.Common;
@@ -46,7 +47,11 @@ public sealed class ContractService(IRepository<EmployeeContract> contracts, IRe
     public async Task<PagedResult<ContractDto>> ListAsync(ContractQuery q, CancellationToken ct)
     {
         var keyword = q.Keyword?.Trim() ?? ""; var employeeId = IdParser.ParseNullable(q.EmployeeId, "employeeId"); var page = new PageRequest(q.PageNumber, q.PageSize);
-        var result = await contracts.PageAsync(x => !x.IsDeleted && (keyword == "" || x.ContractNo.Contains(keyword)) && (!employeeId.HasValue || x.EmployeeId == employeeId) && (!q.Status.HasValue || x.Status == q.Status), page.SafePageNumber, page.SafePageSize, x => x.UpdatedAt, true, ct);
+        Expression<Func<EmployeeContract, bool>> predicate =
+            x => !x.IsDeleted && (keyword == "" || x.ContractNo.Contains(keyword));
+        if (employeeId.HasValue) { var id = employeeId.Value; predicate = predicate.And(x => x.EmployeeId == id); }
+        if (q.Status.HasValue) { var status = q.Status.Value; predicate = predicate.And(x => x.Status == status); }
+        var result = await contracts.PageAsync(predicate, page.SafePageNumber, page.SafePageSize, x => x.UpdatedAt, true, ct);
         return new(result.Items.Select(ToDto).ToArray(), page.SafePageNumber, page.SafePageSize, result.Total);
     }
     public async Task<ContractDto> GetAsync(string id, CancellationToken ct) => ToDto(await Required(id, ct));
@@ -62,7 +67,8 @@ public sealed class ContractService(IRepository<EmployeeContract> contracts, IRe
     public async Task ActivateAsync(string id, ContractActionRequest r, CancellationToken ct)
     {
         var e = await Required(id, ct); Check(e, r.Version, ContractStatus.Draft); if (!e.AttachmentFileId.HasValue) throw new BusinessException("合同生效前必须上传附件");
-        if (!await files.ExistsAsync(x => x.Id == e.AttachmentFileId && !x.IsDeleted && x.Status == FileStatus.Active, ct)) throw new NotFoundException("合同附件不存在或不可用");
+        var attachmentFileId = e.AttachmentFileId.Value;
+        if (!await files.ExistsAsync(x => x.Id == attachmentFileId && !x.IsDeleted && x.Status == FileStatus.Active, ct)) throw new NotFoundException("合同附件不存在或不可用");
         e.Status = ContractStatus.Active; await SaveVersioned(e, ct);
     }
     public async Task TerminateAsync(string id, ContractActionRequest r, CancellationToken ct)
@@ -94,8 +100,15 @@ public sealed class ContractService(IRepository<EmployeeContract> contracts, IRe
     {
         if (r.StartDate.Date > r.EndDate.Date) throw new BusinessException("合同开始日期不得晚于结束日期");
         var employeeId = IdParser.Parse(r.EmployeeId, "employeeId"); if (!await employees.ExistsAsync(x => x.Id == employeeId && !x.IsDeleted, ct)) throw new NotFoundException("员工不存在");
-        if (await contracts.ExistsAsync(x => x.ContractNo == r.ContractNo && !x.IsDeleted && (!currentId.HasValue || x.Id != currentId), ct)) throw new ConflictException("合同编号已存在");
-        var fileId = IdParser.ParseNullable(r.AttachmentFileId, "attachmentFileId"); if (fileId.HasValue && !await files.ExistsAsync(x => x.Id == fileId && !x.IsDeleted, ct)) throw new NotFoundException("附件不存在");
+        Expression<Func<EmployeeContract, bool>> duplicate = x => x.ContractNo == r.ContractNo && !x.IsDeleted;
+        if (currentId.HasValue) { var contractId = currentId.Value; duplicate = duplicate.And(x => x.Id != contractId); }
+        if (await contracts.ExistsAsync(duplicate, ct)) throw new ConflictException("合同编号已存在");
+        var fileId = IdParser.ParseNullable(r.AttachmentFileId, "attachmentFileId");
+        if (fileId.HasValue)
+        {
+            var attachmentId = fileId.Value;
+            if (!await files.ExistsAsync(x => x.Id == attachmentId && !x.IsDeleted, ct)) throw new NotFoundException("附件不存在");
+        }
     }
     private static void Apply(EmployeeContract e, ContractRequest r)
     {

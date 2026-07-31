@@ -64,7 +64,10 @@ public sealed class OrganizationService(IRepository<Department> departments, IRe
     public async Task<IReadOnlyList<PositionDto>> PositionsAsync(string? departmentId, CancellationToken ct)
     {
         var did = IdParser.ParseNullable(departmentId, "departmentId");
-        return mapper.Map<IReadOnlyList<PositionDto>>(await positions.ListAsync(x => !x.IsDeleted && (!did.HasValue || x.DepartmentId == did), ct));
+        if (!did.HasValue)
+            return mapper.Map<IReadOnlyList<PositionDto>>(await positions.ListAsync(x => !x.IsDeleted, ct));
+        var id = did.Value;
+        return mapper.Map<IReadOnlyList<PositionDto>>(await positions.ListAsync(x => !x.IsDeleted && x.DepartmentId == id, ct));
     }
     public async Task<PositionDto> CreatePositionAsync(PositionRequest r, CancellationToken ct)
     {

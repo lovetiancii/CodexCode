@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.ComponentModel.DataAnnotations;
 using Tianci.OA.Application.Abstractions;
 using Tianci.OA.Application.Common;
@@ -44,8 +45,12 @@ public sealed class EmployeeService(IRepository<Employee> employees, IRepository
     {
         var keyword = q.Keyword?.Trim() ?? ""; var did = IdParser.ParseNullable(q.DepartmentId, "departmentId"); var pid = IdParser.ParseNullable(q.PositionId, "positionId");
         var page = new PageRequest(q.PageNumber, q.PageSize);
-        var result = await employees.PageAsync(x => !x.IsDeleted && (keyword == "" || x.Name.Contains(keyword) || x.EmployeeNo.Contains(keyword) || x.Phone.Contains(keyword))
-            && (!did.HasValue || x.DepartmentId == did) && (!pid.HasValue || x.PositionId == pid) && (!q.Status.HasValue || x.Status == q.Status), page.SafePageNumber, page.SafePageSize, x => x.UpdatedAt, true, ct);
+        Expression<Func<Employee, bool>> predicate = x => !x.IsDeleted &&
+            (keyword == "" || x.Name.Contains(keyword) || x.EmployeeNo.Contains(keyword) || x.Phone.Contains(keyword));
+        if (did.HasValue) { var departmentId = did.Value; predicate = predicate.And(x => x.DepartmentId == departmentId); }
+        if (pid.HasValue) { var positionId = pid.Value; predicate = predicate.And(x => x.PositionId == positionId); }
+        if (q.Status.HasValue) { var status = q.Status.Value; predicate = predicate.And(x => x.Status == status); }
+        var result = await employees.PageAsync(predicate, page.SafePageNumber, page.SafePageSize, x => x.UpdatedAt, true, ct);
         return new(result.Items.Select(ToDto).ToArray(), page.SafePageNumber, page.SafePageSize, result.Total);
     }
     public async Task<EmployeeDetailDto> GetAsync(string id, bool includeSensitive, CancellationToken ct)
@@ -87,7 +92,9 @@ public sealed class EmployeeService(IRepository<Employee> employees, IRepository
         var did = IdParser.Parse(r.DepartmentId, "departmentId"); var pid = IdParser.Parse(r.PositionId, "positionId");
         if (!await departments.ExistsAsync(x => x.Id == did && !x.IsDeleted && x.Status == EnabledStatus.Enabled, ct)) throw new NotFoundException("部门不存在或未启用");
         if (!await positions.ExistsAsync(x => x.Id == pid && x.DepartmentId == did && !x.IsDeleted && x.Status == EnabledStatus.Enabled, ct)) throw new NotFoundException("岗位不存在、未启用或不属于该部门");
-        if (await employees.ExistsAsync(x => x.EmployeeNo == r.EmployeeNo && !x.IsDeleted && (!currentId.HasValue || x.Id != currentId), ct)) throw new ConflictException("员工编号已存在");
+        Expression<Func<Employee, bool>> duplicate = x => x.EmployeeNo == r.EmployeeNo && !x.IsDeleted;
+        if (currentId.HasValue) { var employeeId = currentId.Value; duplicate = duplicate.And(x => x.Id != employeeId); }
+        if (await employees.ExistsAsync(duplicate, ct)) throw new ConflictException("员工编号已存在");
     }
     private void Apply(Employee e, EmployeeRequest r)
     {
