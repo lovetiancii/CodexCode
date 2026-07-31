@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tianci.OA.Application/Tianci.OA.Application.csproj" />
+    <Project Path="src/Tianci.OA.Domain/Tianci.OA.Domain.csproj" />
+    <Project Path="src/Tianci.OA.Infrastructure/Tianci.OA.Infrastructure.csproj" />
+    <Project Path="src/Tianci.OA.WebApi/Tianci.OA.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tianci.OA.UnitTests/Tianci.OA.UnitTests.csproj" />
+  </Folder>
+</Solution>
