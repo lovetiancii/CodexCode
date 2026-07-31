@@ -40,8 +40,12 @@ const todos = computed(() => [
 
 function monthKeys() {
   const formatter = new Intl.DateTimeFormat('zh-CN', { month: 'numeric' })
+  const currentMonth = new Date()
+  currentMonth.setDate(1)
+  currentMonth.setHours(0, 0, 0, 0)
   return Array.from({ length: 6 }, (_, index) => {
-    const date = new Date(); date.setMonth(date.getMonth() - (5 - index))
+    const date = new Date(currentMonth)
+    date.setMonth(currentMonth.getMonth() - (5 - index))
     return { key: `${date.getFullYear()}-${date.getMonth()}`, label: formatter.format(date) }
   })
 }

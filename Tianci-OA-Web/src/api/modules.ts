@@ -4,12 +4,19 @@ import type {
   LoginResponse, MenuDto, PagedResult, PositionDto, RegularizeEmployeeRequest, ResumeDto, RoleDto, UserDto,
 } from '@/types/contracts'
 
+// 后端的雪花 ID 与 long 统一按字符串序列化，分页 total 也可能因此以字符串到达浏览器。
+// 在 API 边界统一转回 number，避免人数相加时出现 "0" + "0" => "00"。
+const normalizePage = <T>(result: PagedResult<T>): PagedResult<T> => ({
+  ...result,
+  total: Number(result.total) || 0,
+})
+
 export const authApi = {
   login: (data: { username: string; password: string }) => request.post<LoginResponse>('/auth/login', data),
 }
 
 export const employeeApi = {
-  list: (params: Record<string, unknown>) => request.get<PagedResult<EmployeeDto>>('/employees', { params }),
+  list: (params: Record<string, unknown>) => request.get<PagedResult<EmployeeDto>>('/employees', { params }).then(normalizePage),
   get: (id: string, includeSensitive = false) => request.get<EmployeeDetailDto>(`/employees/${id}`, { params: { includeSensitive } }),
   create: (data: Record<string, unknown>) => request.post<EmployeeDto>('/employees', data),
   update: (id: string, version: number, data: Record<string, unknown>) => request.put<EmployeeDto>(`/employees/${id}`, data, { params: { version } }),
@@ -19,7 +26,7 @@ export const employeeApi = {
 }
 
 export const resumeApi = {
-  list: (params: Record<string, unknown>) => request.get<PagedResult<ResumeDto>>('/resumes', { params }),
+  list: (params: Record<string, unknown>) => request.get<PagedResult<ResumeDto>>('/resumes', { params }).then(normalizePage),
   get: (id: string) => request.get<ResumeDto>(`/resumes/${id}`),
   create: (data: Record<string, unknown>) => request.post<ResumeDto>('/resumes', data),
   update: (id: string, version: number, data: Record<string, unknown>) => request.put<ResumeDto>(`/resumes/${id}`, data, { params: { version } }),
@@ -37,7 +44,7 @@ export const interviewApi = {
 }
 
 export const contractApi = {
-  list: (params: Record<string, unknown>) => request.get<PagedResult<ContractDto>>('/contracts', { params }),
+  list: (params: Record<string, unknown>) => request.get<PagedResult<ContractDto>>('/contracts', { params }).then(normalizePage),
   get: (id: string) => request.get<ContractDto>(`/contracts/${id}`),
   expiring: (withinDays?: number) => request.get<ContractDto[]>('/contracts/expiring', { params: { withinDays } }),
   create: (data: Record<string, unknown>) => request.post<ContractDto>('/contracts', data),
@@ -58,23 +65,25 @@ export const organizationApi = {
 }
 
 export const identityApi = {
-  users: (params: Record<string, unknown>) => request.get<PagedResult<UserDto>>('/users', { params }),
+  users: (params: Record<string, unknown>) => request.get<PagedResult<UserDto>>('/users', { params }).then(normalizePage),
   getUser: (id: string) => request.get<UserDto>(`/users/${id}`),
   createUser: (data: Record<string, unknown>) => request.post<UserDto>('/users', data),
   updateUser: (id: string, data: Record<string, unknown>) => request.put<UserDto>(`/users/${id}`, data),
   deleteUser: (id: string) => request.delete<void>(`/users/${id}`),
   resetPassword: (id: string, newPassword: string) => request.post<void>(`/users/${id}/reset-password`, { newPassword }),
+  userRoles: (id: string) => request.get<string[]>(`/users/${id}/roles`),
   assignRoles: (id: string, ids: string[]) => request.put<void>(`/users/${id}/roles`, { ids }),
   roles: () => request.get<RoleDto[]>('/roles'),
   createRole: (data: Record<string, unknown>) => request.post<RoleDto>('/roles', data),
   updateRole: (id: string, data: Record<string, unknown>) => request.put<RoleDto>(`/roles/${id}`, data),
   deleteRole: (id: string) => request.delete<void>(`/roles/${id}`),
+  roleMenus: (id: string) => request.get<string[]>(`/roles/${id}/menus`),
   assignMenus: (id: string, ids: string[]) => request.put<void>(`/roles/${id}/menus`, { ids }),
   menus: () => request.get<MenuDto[]>('/menus'),
   createMenu: (data: Record<string, unknown>) => request.post<MenuDto>('/menus', data),
   updateMenu: (id: string, data: Record<string, unknown>) => request.put<MenuDto>(`/menus/${id}`, data),
   deleteMenu: (id: string) => request.delete<void>(`/menus/${id}`),
-  auditLogs: (params: Record<string, unknown>) => request.get<PagedResult<AuditLogDto>>('/audit-logs', { params }),
+  auditLogs: (params: Record<string, unknown>) => request.get<PagedResult<AuditLogDto>>('/audit-logs', { params }).then(normalizePage),
 }
 
 export const fileApi = {

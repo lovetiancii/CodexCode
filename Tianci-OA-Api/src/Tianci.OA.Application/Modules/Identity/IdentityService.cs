@@ -15,11 +15,13 @@ public interface IIdentityService
     Task<UserDto> CreateUserAsync(UserCreateRequest request, CancellationToken ct);
     Task<UserDto> UpdateUserAsync(string id, UserUpdateRequest request, CancellationToken ct);
     Task ResetPasswordAsync(string id, ResetPasswordRequest request, CancellationToken ct);
+    Task<IReadOnlyList<string>> GetUserRoleIdsAsync(string id, CancellationToken ct);
     Task AssignUserRolesAsync(string id, AssignIdsRequest request, CancellationToken ct);
     Task DeleteUserAsync(string id, CancellationToken ct);
     Task<IReadOnlyList<RoleDto>> GetRolesAsync(CancellationToken ct);
     Task<RoleDto> CreateRoleAsync(RoleUpsertRequest request, CancellationToken ct);
     Task<RoleDto> UpdateRoleAsync(string id, RoleUpsertRequest request, CancellationToken ct);
+    Task<IReadOnlyList<string>> GetRoleMenuIdsAsync(string id, CancellationToken ct);
     Task AssignRoleMenusAsync(string id, AssignIdsRequest request, CancellationToken ct);
     Task DeleteRoleAsync(string id, CancellationToken ct);
     Task<IReadOnlyList<MenuDto>> GetMenusAsync(CancellationToken ct);
@@ -126,6 +128,17 @@ public sealed class IdentityService(
         EntityAudit.Update(user, clock, currentUser); await users.UpdateAsync(user, ct);
     }
 
+    public async Task<IReadOnlyList<string>> GetUserRoleIdsAsync(string id, CancellationToken ct)
+    {
+        var userId = IdParser.Parse(id);
+        _ = await GetRequiredAsync<SysUser>(users, userId, "用户不存在", ct);
+        var bindings = await userRoles.ListAsync(x => x.UserId == userId, ct);
+        if (bindings.Count == 0) return [];
+        var boundIds = bindings.Select(x => x.RoleId).Distinct().ToArray();
+        var existingRoles = await roles.ListAsync(x => boundIds.Contains(x.Id) && !x.IsDeleted, ct);
+        return existingRoles.Select(x => x.Id.ToString()).ToArray();
+    }
+
     public async Task AssignUserRolesAsync(string id, AssignIdsRequest request, CancellationToken ct)
     {
         var userId = IdParser.Parse(id); _ = await GetRequiredAsync<SysUser>(users, userId, "用户不存在", ct);
@@ -157,6 +170,17 @@ public sealed class IdentityService(
         if (role.IsSystem && request.Status == EnabledStatus.Disabled) throw new ConflictException("系统角色不可停用");
         role.Name = request.Name.Trim(); role.Code = request.Code.Trim(); role.DataScope = request.DataScope; role.Status = request.Status; role.Remark = request.Remark;
         EntityAudit.Update(role, clock, currentUser); await roles.UpdateAsync(role, ct); return mapper.Map<RoleDto>(role);
+    }
+
+    public async Task<IReadOnlyList<string>> GetRoleMenuIdsAsync(string id, CancellationToken ct)
+    {
+        var roleId = IdParser.Parse(id);
+        _ = await GetRequiredAsync<SysRole>(roles, roleId, "角色不存在", ct);
+        var bindings = await roleMenus.ListAsync(x => x.RoleId == roleId, ct);
+        if (bindings.Count == 0) return [];
+        var boundIds = bindings.Select(x => x.MenuId).Distinct().ToArray();
+        var existingMenus = await menus.ListAsync(x => boundIds.Contains(x.Id) && !x.IsDeleted, ct);
+        return existingMenus.Select(x => x.Id.ToString()).ToArray();
     }
 
     public async Task AssignRoleMenusAsync(string id, AssignIdsRequest request, CancellationToken ct)

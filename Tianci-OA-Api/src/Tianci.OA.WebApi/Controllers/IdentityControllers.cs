@@ -14,6 +14,7 @@ public sealed class UsersController(IIdentityService service) : ControllerBase
     [HttpPost] public Task<UserDto> Create(UserCreateRequest request, CancellationToken ct) => service.CreateUserAsync(request, ct);
     [HttpPut("{id}")] public Task<UserDto> Update(string id, UserUpdateRequest request, CancellationToken ct) => service.UpdateUserAsync(id, request, ct);
     [HttpPost("{id}/reset-password")] public async Task<IActionResult> Reset(string id, ResetPasswordRequest request, CancellationToken ct) { await service.ResetPasswordAsync(id, request, ct); return NoContent(); }
+    [HttpGet("{id}/roles")] public Task<IReadOnlyList<string>> GetRoles(string id, CancellationToken ct) => service.GetUserRoleIdsAsync(id, ct);
     [HttpPut("{id}/roles")] public async Task<IActionResult> Roles(string id, AssignIdsRequest request, CancellationToken ct) { await service.AssignUserRolesAsync(id, request, ct); return NoContent(); }
     [HttpDelete("{id}")] public async Task<IActionResult> Delete(string id, CancellationToken ct) { await service.DeleteUserAsync(id, ct); return NoContent(); }
 }
@@ -24,6 +25,7 @@ public sealed class RolesController(IIdentityService service) : ControllerBase
     [HttpGet] public Task<IReadOnlyList<RoleDto>> List(CancellationToken ct) => service.GetRolesAsync(ct);
     [HttpPost] public Task<RoleDto> Create(RoleUpsertRequest request, CancellationToken ct) => service.CreateRoleAsync(request, ct);
     [HttpPut("{id}")] public Task<RoleDto> Update(string id, RoleUpsertRequest request, CancellationToken ct) => service.UpdateRoleAsync(id, request, ct);
+    [HttpGet("{id}/menus")] public Task<IReadOnlyList<string>> GetMenus(string id, CancellationToken ct) => service.GetRoleMenuIdsAsync(id, ct);
     [HttpPut("{id}/menus")] public async Task<IActionResult> Menus(string id, AssignIdsRequest request, CancellationToken ct) { await service.AssignRoleMenusAsync(id, request, ct); return NoContent(); }
     [HttpDelete("{id}")] public async Task<IActionResult> Delete(string id, CancellationToken ct) { await service.DeleteRoleAsync(id, ct); return NoContent(); }
 }

@@ -24,6 +24,10 @@ const roleAssignOpen = ref(false)
 const menuAssignOpen = ref(false)
 const editingId = ref('')
 const assignedIds = ref<string[]>([])
+const assignmentKind = ref<'roles' | 'menus'>('roles')
+const assignmentLoading = ref(false)
+const assignmentSaving = ref(false)
+const assignmentError = ref('')
 const userForm = reactive({ username: '', displayName: '', password: '', phone: '', email: '', employeeId: '', departmentId: '', status: 1, roleIds: [] as string[] })
 const roleForm = reactive({ name: '', code: '', dataScope: 3, status: 1, remark: '' })
 const menuForm = reactive({ parentId: '', type: 2, name: '', routePath: '', component: '', permissionCode: '', icon: '', sortOrder: 0, visible: true, status: 1 })
@@ -120,15 +124,49 @@ async function resetPassword(row: UserDto) {
   })
   await identityApi.resetPassword(row.id, result.value); ElMessage.success('密码已重置，旧会话将失效')
 }
-function openAssignRoles(row: UserDto) { editingId.value = row.id; assignedIds.value = []; roleAssignOpen.value = true }
-async function assignRoles() {
-  await identityApi.assignRoles(editingId.value, assignedIds.value)
-  ElMessage.success('用户角色已更新'); roleAssignOpen.value = false
+async function loadAssignedIds() {
+  assignmentLoading.value = true
+  assignmentError.value = ''
+  assignedIds.value = []
+  try {
+    assignedIds.value = assignmentKind.value === 'roles'
+      ? await identityApi.userRoles(editingId.value)
+      : await identityApi.roleMenus(editingId.value)
+  } catch (cause) {
+    assignmentError.value = cause instanceof Error ? cause.message : '已绑定权限加载失败'
+  } finally {
+    assignmentLoading.value = false
+  }
 }
-function openAssignMenus(row: RoleDto) { editingId.value = row.id; assignedIds.value = []; menuAssignOpen.value = true }
+async function openAssignRoles(row: UserDto) {
+  editingId.value = row.id
+  assignmentKind.value = 'roles'
+  roleAssignOpen.value = true
+  await loadAssignedIds()
+}
+async function assignRoles() {
+  assignmentSaving.value = true
+  try {
+    await identityApi.assignRoles(editingId.value, assignedIds.value)
+    ElMessage.success('用户角色已更新'); roleAssignOpen.value = false
+  } finally {
+    assignmentSaving.value = false
+  }
+}
+async function openAssignMenus(row: RoleDto) {
+  editingId.value = row.id
+  assignmentKind.value = 'menus'
+  menuAssignOpen.value = true
+  await loadAssignedIds()
+}
 async function assignMenus() {
-  await identityApi.assignMenus(editingId.value, assignedIds.value)
-  ElMessage.success('角色菜单权限已更新'); menuAssignOpen.value = false
+  assignmentSaving.value = true
+  try {
+    await identityApi.assignMenus(editingId.value, assignedIds.value)
+    ElMessage.success('角色菜单权限已更新'); menuAssignOpen.value = false
+  } finally {
+    assignmentSaving.value = false
+  }
 }
 watch(mode, () => { page.pageNumber = 1; load() })
 onMounted(load)
@@ -227,8 +265,28 @@ onActivated(load)
       <template #footer><el-button @click="editorOpen = false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-drawer>
 
-    <el-dialog v-model="roleAssignOpen" title="分配角色" width="480px"><el-alert title="当前后端未提供用户已绑定角色查询，本次保存将以所选角色替换原绑定。" type="warning" show-icon :closable="false" /><el-checkbox-group v-model="assignedIds" class="permission-checks"><el-checkbox v-for="item in roles" :key="item.id" :value="item.id">{{ item.name }}</el-checkbox></el-checkbox-group><template #footer><el-button @click="roleAssignOpen = false">取消</el-button><el-button type="primary" @click="assignRoles">保存</el-button></template></el-dialog>
-    <el-dialog v-model="menuAssignOpen" title="菜单与操作授权" width="560px"><el-alert title="当前后端未提供角色已授权菜单查询，本次保存将以所选菜单替换原授权。" type="warning" show-icon :closable="false" /><el-checkbox-group v-model="assignedIds" class="permission-checks"><el-checkbox v-for="item in menus" :key="item.id" :value="item.id">{{ item.name }}<small>{{ item.permissionCode }}</small></el-checkbox></el-checkbox-group><template #footer><el-button @click="menuAssignOpen = false">取消</el-button><el-button type="primary" @click="assignMenus">保存授权</el-button></template></el-dialog>
+    <el-dialog v-model="roleAssignOpen" title="分配角色" width="480px">
+      <div v-loading="assignmentLoading" class="assignment-content">
+        <el-alert v-if="assignmentError" :title="assignmentError" type="error" show-icon :closable="false">
+          <template #default><el-button link type="primary" @click="loadAssignedIds">重新加载</el-button></template>
+        </el-alert>
+        <el-checkbox-group v-else v-model="assignedIds" class="permission-checks">
+          <el-checkbox v-for="item in roles" :key="item.id" :value="item.id">{{ item.name }}</el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <template #footer><el-button @click="roleAssignOpen = false">取消</el-button><el-button type="primary" :loading="assignmentSaving" :disabled="assignmentLoading || Boolean(assignmentError)" @click="assignRoles">保存</el-button></template>
+    </el-dialog>
+    <el-dialog v-model="menuAssignOpen" title="菜单与操作授权" width="560px">
+      <div v-loading="assignmentLoading" class="assignment-content">
+        <el-alert v-if="assignmentError" :title="assignmentError" type="error" show-icon :closable="false">
+          <template #default><el-button link type="primary" @click="loadAssignedIds">重新加载</el-button></template>
+        </el-alert>
+        <el-checkbox-group v-else v-model="assignedIds" class="permission-checks">
+          <el-checkbox v-for="item in menus" :key="item.id" :value="item.id">{{ item.name }}<small>{{ item.permissionCode }}</small></el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <template #footer><el-button @click="menuAssignOpen = false">取消</el-button><el-button type="primary" :loading="assignmentSaving" :disabled="assignmentLoading || Boolean(assignmentError)" @click="assignMenus">保存授权</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
@@ -241,5 +299,9 @@ onActivated(load)
   float: right;
   margin-left: 24px;
   color: var(--el-text-color-secondary);
+}
+
+.assignment-content {
+  min-height: 120px;
 }
 </style>
