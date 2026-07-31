@@ -3,8 +3,8 @@ import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Edit, Key, Plus, Refresh, Search, Setting } from '@element-plus/icons-vue'
-import { identityApi, organizationApi } from '@/api/modules'
-import type { AuditLogDto, DepartmentDto, MenuDto, RoleDto, UserDto } from '@/types/contracts'
+import { employeeApi, identityApi, organizationApi } from '@/api/modules'
+import type { AuditLogDto, DepartmentDto, EmployeeDto, MenuDto, RoleDto, UserDto } from '@/types/contracts'
 
 const route = useRoute()
 const mode = computed(() => String(route.meta.mode || 'users'))
@@ -15,6 +15,8 @@ const roles = ref<RoleDto[]>([])
 const menus = ref<MenuDto[]>([])
 const audits = ref<AuditLogDto[]>([])
 const departments = ref<DepartmentDto[]>([])
+const employeeOptions = ref<EmployeeDto[]>([])
+const employeeLoading = ref(false)
 const total = ref(0)
 const page = reactive({ keyword: '', module: '', operatorUserId: '', pageNumber: 1, pageSize: 20 })
 const editorOpen = ref(false)
@@ -46,14 +48,32 @@ async function load() {
   } catch (cause) { error.value = cause instanceof Error ? cause.message : '系统数据加载失败' }
   finally { loading.value = false }
 }
+async function searchEmployees(keyword = '') {
+  employeeLoading.value = true
+  try {
+    const result = await employeeApi.list({ keyword: keyword.trim(), pageNumber: 1, pageSize: 50 })
+    employeeOptions.value = result.items.filter((item) => item.status === 1 || item.status === 2)
+  } finally {
+    employeeLoading.value = false
+  }
+}
+function selectEmployee(employeeId: string) {
+  const employee = employeeOptions.value.find((item) => item.id === employeeId)
+  if (!employee) return
+  userForm.displayName ||= employee.name
+  userForm.phone ||= employee.phone
+  userForm.email ||= employee.email || ''
+  userForm.departmentId = employee.departmentId
+}
 function resetQuery() { Object.assign(page, { keyword: '', module: '', operatorUserId: '', pageNumber: 1 }); load() }
-function openUser(row?: UserDto) {
+async function openUser(row?: UserDto) {
   editingId.value = row?.id || ''
   Object.assign(userForm, row ? {
     username: row.username, displayName: row.displayName, password: '', phone: row.phone || '', email: row.email || '',
     employeeId: row.employeeId || '', departmentId: row.departmentId || '', status: row.status, roleIds: [],
   } : { username: '', displayName: '', password: '', phone: '', email: '', employeeId: '', departmentId: '', status: 1, roleIds: [] })
   editorOpen.value = true
+  await searchEmployees(row?.displayName || '')
 }
 function openRole(row?: RoleDto) {
   editingId.value = row?.id || ''
@@ -160,7 +180,48 @@ onActivated(load)
     </section>
 
     <el-drawer v-model="editorOpen" :title="editingId ? '编辑' + title.slice(0,2) : '新增' + title.slice(0,2)" size="560px">
-      <el-form v-if="mode === 'users'" :model="userForm" label-position="top"><div class="form-grid"><el-form-item label="用户名" required><el-input v-model="userForm.username" :disabled="Boolean(editingId)" /></el-form-item><el-form-item label="姓名" required><el-input v-model="userForm.displayName" /></el-form-item><el-form-item v-if="!editingId" label="初始密码" required><el-input v-model="userForm.password" type="password" show-password /></el-form-item><el-form-item label="手机"><el-input v-model="userForm.phone" /></el-form-item><el-form-item label="邮箱"><el-input v-model="userForm.email" /></el-form-item><el-form-item label="所属部门"><el-select v-model="userForm.departmentId" clearable><el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><el-form-item v-if="editingId" label="状态"><el-select v-model="userForm.status"><el-option label="停用" :value="0" /><el-option label="启用" :value="1" /><el-option label="锁定" :value="2" /></el-select></el-form-item><el-form-item v-else label="角色"><el-select v-model="userForm.roleIds" multiple><el-option v-for="item in roles" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item></div></el-form>
+      <el-form v-if="mode === 'users'" :model="userForm" label-position="top">
+        <el-alert
+          title="面试官需要先关联一名在职员工，并保持账号为启用状态。"
+          type="info"
+          show-icon
+          :closable="false"
+          class="editor-tip"
+        />
+        <div class="form-grid">
+          <el-form-item label="关联员工">
+            <el-select
+              v-model="userForm.employeeId"
+              filterable
+              remote
+              clearable
+              reserve-keyword
+              :remote-method="searchEmployees"
+              :loading="employeeLoading"
+              placeholder="按姓名或工号搜索在职员工"
+              @change="selectEmployee"
+            >
+              <el-option
+                v-for="item in employeeOptions"
+                :key="item.id"
+                :label="`${item.name}（${item.employeeNo}）`"
+                :value="item.id"
+              >
+                <span>{{ item.name }}（{{ item.employeeNo }}）</span>
+                <small class="employee-department">{{ departmentMap[item.departmentId] || '未分配部门' }}</small>
+              </el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="用户名" required><el-input v-model="userForm.username" :disabled="Boolean(editingId)" /></el-form-item>
+          <el-form-item label="姓名" required><el-input v-model="userForm.displayName" /></el-form-item>
+          <el-form-item v-if="!editingId" label="初始密码" required><el-input v-model="userForm.password" type="password" show-password /></el-form-item>
+          <el-form-item label="手机"><el-input v-model="userForm.phone" /></el-form-item>
+          <el-form-item label="邮箱"><el-input v-model="userForm.email" /></el-form-item>
+          <el-form-item label="所属部门"><el-select v-model="userForm.departmentId" clearable :disabled="Boolean(userForm.employeeId)"><el-option v-for="item in departments" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
+          <el-form-item v-if="editingId" label="状态"><el-select v-model="userForm.status"><el-option label="停用" :value="0" /><el-option label="启用" :value="1" /><el-option label="锁定" :value="2" /></el-select></el-form-item>
+          <el-form-item v-else label="角色"><el-select v-model="userForm.roleIds" multiple><el-option v-for="item in roles" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
+        </div>
+      </el-form>
       <el-form v-else-if="mode === 'roles'" :model="roleForm" label-position="top"><el-form-item label="角色名称" required><el-input v-model="roleForm.name" /></el-form-item><el-form-item label="角色编码" required><el-input v-model="roleForm.code" placeholder="例如 HR_MANAGER" /></el-form-item><el-form-item label="数据范围"><el-select v-model="roleForm.dataScope"><el-option label="全部数据" :value="1" /><el-option label="本部门及下级" :value="2" /><el-option label="仅本人" :value="3" /></el-select></el-form-item><el-form-item label="状态"><el-switch v-model="roleForm.status" :active-value="1" :inactive-value="0" /></el-form-item><el-form-item label="备注"><el-input v-model="roleForm.remark" type="textarea" /></el-form-item></el-form>
       <el-form v-else :model="menuForm" label-position="top"><div class="form-grid"><el-form-item label="名称" required><el-input v-model="menuForm.name" /></el-form-item><el-form-item label="类型" required><el-select v-model="menuForm.type"><el-option label="目录" :value="1" /><el-option label="菜单" :value="2" /><el-option label="按钮" :value="3" /></el-select></el-form-item><el-form-item label="上级"><el-select v-model="menuForm.parentId" clearable><el-option v-for="item in menus.filter(i => i.id !== editingId && i.type !== 3)" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><el-form-item label="排序"><el-input-number v-model="menuForm.sortOrder" /></el-form-item><el-form-item label="路由"><el-input v-model="menuForm.routePath" /></el-form-item><el-form-item label="组件"><el-input v-model="menuForm.component" /></el-form-item><el-form-item label="权限标识"><el-input v-model="menuForm.permissionCode" /></el-form-item><el-form-item label="图标"><el-input v-model="menuForm.icon" /></el-form-item><el-form-item label="可见"><el-switch v-model="menuForm.visible" /></el-form-item><el-form-item label="状态"><el-switch v-model="menuForm.status" :active-value="1" :inactive-value="0" /></el-form-item></div></el-form>
       <template #footer><el-button @click="editorOpen = false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
@@ -170,3 +231,15 @@ onActivated(load)
     <el-dialog v-model="menuAssignOpen" title="菜单与操作授权" width="560px"><el-alert title="当前后端未提供角色已授权菜单查询，本次保存将以所选菜单替换原授权。" type="warning" show-icon :closable="false" /><el-checkbox-group v-model="assignedIds" class="permission-checks"><el-checkbox v-for="item in menus" :key="item.id" :value="item.id">{{ item.name }}<small>{{ item.permissionCode }}</small></el-checkbox></el-checkbox-group><template #footer><el-button @click="menuAssignOpen = false">取消</el-button><el-button type="primary" @click="assignMenus">保存授权</el-button></template></el-dialog>
   </div>
 </template>
+
+<style scoped>
+.editor-tip {
+  margin-bottom: 18px;
+}
+
+.employee-department {
+  float: right;
+  margin-left: 24px;
+  color: var(--el-text-color-secondary);
+}
+</style>

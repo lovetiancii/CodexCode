@@ -19,8 +19,12 @@ const total = ref(0)
 const query = reactive({ keyword: '', departmentId: '', positionId: '', status: undefined as number | undefined, pageNumber: 1, pageSize: 20 })
 const editorOpen = ref(false)
 const detailOpen = ref(false)
+const regularizeOpen = ref(false)
 const saving = ref(false)
+const actionLoading = ref(false)
 const editing = ref<EmployeeDto | null>(null)
+const regularizingEmployee = ref<EmployeeDto | null>(null)
+const regularizeDate = ref('')
 const detail = ref<EmployeeDetailDto | null>(null)
 const formRef = ref<FormInstance>()
 const form = reactive({
@@ -45,6 +49,7 @@ const departmentMap = computed(() => Object.fromEntries(departments.value.map((i
 const positionMap = computed(() => Object.fromEntries(positions.value.map((item) => [item.id, item.name])))
 const filteredPositions = computed(() => positions.value.filter((item) => !form.departmentId || item.departmentId === form.departmentId))
 const pageTitle = computed(() => ({ employees: '员工档案', departments: '组织架构', positions: '岗位管理' })[mode.value] || '人员管理')
+const overdueProbationCount = computed(() => rows.value.filter(isProbationOverdue).length)
 
 function cleanParams(record: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== '' && value !== undefined))
@@ -74,6 +79,58 @@ function resetEmployeeForm() {
     employeeNo: '', sourceResumeId: '', name: '', gender: 0, phone: '', email: '', idCard: '',
     departmentId: '', positionId: '', entryDate: new Date().toISOString().slice(0, 10), probationMonths: 3, regularDate: '', monthlySalary: '',
   })
+}
+function dateInputValue(date = new Date()) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+function plannedRegularDate(row: EmployeeDto) {
+  if (row.regularDate) return row.regularDate.slice(0, 10)
+  const date = new Date(`${row.entryDate.slice(0, 10)}T00:00:00`)
+  const entryDay = date.getDate()
+  date.setDate(1)
+  date.setMonth(date.getMonth() + row.probationMonths)
+  const lastDayOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
+  date.setDate(Math.min(entryDay, lastDayOfMonth))
+  return dateInputValue(date)
+}
+function isProbationOverdue(row: EmployeeDto) {
+  return row.status === EMPLOYEE_STATUS.Probation && plannedRegularDate(row) < dateInputValue()
+}
+function overdueDays(row: EmployeeDto) {
+  if (!isProbationOverdue(row)) return 0
+  const elapsed = new Date(dateInputValue()).getTime() - new Date(plannedRegularDate(row)).getTime()
+  return Math.max(1, Math.floor(elapsed / 86_400_000))
+}
+function openRegularize(row: EmployeeDto) {
+  regularizingEmployee.value = row
+  regularizeDate.value = dateInputValue()
+  regularizeOpen.value = true
+}
+function disableRegularizeDate(date: Date) {
+  const row = regularizingEmployee.value
+  if (!row) return true
+  const value = dateInputValue(date)
+  return value > dateInputValue() || value < row.entryDate.slice(0, 10)
+}
+async function confirmRegularize() {
+  const row = regularizingEmployee.value
+  if (!row || !regularizeDate.value) { ElMessage.warning('请选择实际转正日期'); return }
+  const entryDate = row.entryDate.slice(0, 10)
+  const today = dateInputValue()
+  if (regularizeDate.value < entryDate || regularizeDate.value > today) {
+    ElMessage.warning(`实际转正日期须在入职日期 ${entryDate} 与今天之间`)
+    return
+  }
+  actionLoading.value = true
+  try {
+    await employeeApi.regularize(row.id, { regularDate: regularizeDate.value, version: row.version })
+    ElMessage.success(`${row.name} 已确认转正`)
+    regularizeOpen.value = false
+    await load()
+  } finally { actionLoading.value = false }
 }
 function openCreate() { editing.value = null; resetEmployeeForm(); editorOpen.value = true }
 function openEdit(row: EmployeeDto) {
@@ -169,16 +226,26 @@ onActivated(load)
       </section>
       <section class="panel table-panel" v-loading="loading">
         <div class="table-toolbar"><div><h2>员工列表</h2><span>共 {{ total }} 条档案</span></div><el-button v-permission="'employee:create'" type="primary" :icon="Plus" @click="openCreate">新增员工</el-button></div>
+        <el-alert v-if="overdueProbationCount" :title="`${overdueProbationCount} 名试用员工已超过计划转正日期，请及时处理`" type="warning" show-icon :closable="false" class="probation-alert" />
         <el-table :data="rows" stripe empty-text="暂无员工档案">
           <el-table-column prop="employeeNo" label="员工编号" width="130" />
           <el-table-column label="姓名" min-width="130"><template #default="{ row }"><el-button link type="primary" @click="showDetail(row)">{{ row.name }}</el-button></template></el-table-column>
           <el-table-column label="部门 / 岗位" min-width="180"><template #default="{ row }"><strong>{{ departmentMap[row.departmentId] || '—' }}</strong><small class="table-sub">{{ positionMap[row.positionId] || '—' }}</small></template></el-table-column>
           <el-table-column prop="phone" label="手机" width="135" />
           <el-table-column label="入职日期" width="120"><template #default="{ row }">{{ row.entryDate.slice(0, 10) }}</template></el-table-column>
+          <el-table-column label="计划转正" width="140"><template #default="{ row }">
+            <template v-if="row.status === EMPLOYEE_STATUS.Probation">
+              <el-tag v-if="isProbationOverdue(row)" type="danger" effect="light">逾期 {{ overdueDays(row) }} 天</el-tag>
+              <span v-else>{{ plannedRegularDate(row) }}</span>
+              <small v-if="isProbationOverdue(row)" class="table-sub">{{ plannedRegularDate(row) }}</small>
+            </template>
+            <span v-else>{{ row.regularDate?.slice(0, 10) || '—' }}</span>
+          </template></el-table-column>
           <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.status === EMPLOYEE_STATUS.Active ? 'success' : row.status === EMPLOYEE_STATUS.Terminated ? 'danger' : 'warning'" effect="light">{{ EMPLOYEE_STATUS_LABEL[row.status] }}</el-tag></template></el-table-column>
-          <el-table-column label="操作" fixed="right" width="245"><template #default="{ row }">
+          <el-table-column label="操作" fixed="right" width="320"><template #default="{ row }">
             <el-button link type="primary" :icon="View" @click="showDetail(row)">详情</el-button>
             <el-button v-if="[EMPLOYEE_STATUS.Probation, EMPLOYEE_STATUS.Active].includes(row.status)" v-permission="'employee:edit'" link type="primary" :icon="Edit" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="row.status === EMPLOYEE_STATUS.Probation" v-permission="'employee:edit'" link type="success" @click="openRegularize(row)">确认转正</el-button>
             <el-button v-if="[EMPLOYEE_STATUS.Probation, EMPLOYEE_STATUS.Active].includes(row.status)" v-permission="'employee:terminate'" link type="danger" @click="terminate(row)">离职</el-button>
             <el-button v-if="row.status === EMPLOYEE_STATUS.Terminated" v-permission="'employee:archive'" link type="warning" @click="archive(row)">归档</el-button>
           </template></el-table-column>
@@ -236,6 +303,32 @@ onActivated(load)
       </template>
     </el-drawer>
 
+    <el-dialog v-model="regularizeOpen" title="确认员工转正" width="460px" destroy-on-close>
+      <template v-if="regularizingEmployee">
+        <el-alert
+          :type="isProbationOverdue(regularizingEmployee) ? 'warning' : 'info'"
+          :title="isProbationOverdue(regularizingEmployee)
+            ? `${regularizingEmployee.name} 已超过计划转正日期 ${overdueDays(regularizingEmployee)} 天`
+            : `${regularizingEmployee.name} 的计划转正日期为 ${plannedRegularDate(regularizingEmployee)}`"
+          show-icon
+          :closable="false"
+        />
+        <el-form label-position="top" class="regularize-form">
+          <el-form-item label="实际转正日期" required>
+            <el-date-picker
+              v-model="regularizeDate"
+              type="date"
+              value-format="YYYY-MM-DD"
+              :disabled-date="disableRegularizeDate"
+              placeholder="选择实际转正日期"
+            />
+          </el-form-item>
+          <p class="form-help">确认后员工状态将由“试用”变为“在职”，并记录实际转正日期。</p>
+        </el-form>
+      </template>
+      <template #footer><el-button @click="regularizeOpen = false">取消</el-button><el-button type="primary" :loading="actionLoading" @click="confirmRegularize">确认转正</el-button></template>
+    </el-dialog>
+
     <el-dialog v-model="departmentDialog" :title="orgEditingId ? '编辑部门' : '新增部门'" width="520px">
       <el-form :model="departmentForm" label-position="top"><div class="form-grid"><el-form-item label="部门名称" required><el-input v-model="departmentForm.name" /></el-form-item><el-form-item label="部门编码" required><el-input v-model="departmentForm.code" /></el-form-item><el-form-item label="上级部门"><el-select v-model="departmentForm.parentId" clearable><el-option v-for="item in departments.filter(i => i.id !== orgEditingId)" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><el-form-item label="排序"><el-input-number v-model="departmentForm.sortOrder" /></el-form-item><el-form-item label="状态"><el-switch v-model="departmentForm.status" :active-value="1" :inactive-value="0" /></el-form-item></div><el-form-item label="备注"><el-input v-model="departmentForm.remark" type="textarea" /></el-form-item></el-form>
       <template #footer><el-button @click="departmentDialog = false">取消</el-button><el-button type="primary" @click="saveDepartment">保存</el-button></template>
@@ -246,3 +339,10 @@ onActivated(load)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.probation-alert { margin-bottom: 14px; }
+.regularize-form { margin-top: 20px; }
+.regularize-form :deep(.el-date-editor) { width: 100%; }
+.form-help { margin: -4px 0 0; color: #728097; font-size: 12px; line-height: 1.7; }
+</style>

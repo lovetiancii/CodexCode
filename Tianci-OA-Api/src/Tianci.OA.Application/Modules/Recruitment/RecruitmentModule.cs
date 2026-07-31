@@ -47,6 +47,25 @@ public sealed class CompleteInterviewRequest
     public int ResumeVersion { get; set; }
 }
 public sealed record InterviewDto(string Id, string ResumeId, byte RoundNo, string InterviewerUserId, DateTime ScheduledAt, string? Location, decimal? Score, string? Evaluation, InterviewConclusion Conclusion, DateTime? NextScheduledAt, DateTime? CompletedAt, string? Remark);
+public sealed record InterviewerOptionDto(
+    string UserId,
+    string EmployeeId,
+    string EmployeeNo,
+    string Name,
+    string DepartmentId,
+    string DepartmentName,
+    string PositionId,
+    string PositionName);
+public interface IInterviewerQuery
+{
+    Task<IReadOnlyList<InterviewerOptionDto>> SearchAsync(
+        long departmentId,
+        string? keyword,
+        bool sameDepartmentOnly,
+        int limit,
+        CancellationToken ct);
+    Task<bool> IsEligibleAsync(long userId, CancellationToken ct);
+}
 public sealed class ConfirmOfferRequest
 {
     public DateTime PlannedEntryDate { get; set; }
@@ -67,6 +86,7 @@ public interface IRecruitmentService
     Task<ResumeDto> UpdateAsync(string id, ResumeRequest request, int version, CancellationToken ct);
     Task ChangeStatusAsync(string id, ChangeResumeStatusRequest request, CancellationToken ct);
     Task<InterviewDto> ScheduleInterviewAsync(string resumeId, ScheduleInterviewRequest request, CancellationToken ct);
+    Task<IReadOnlyList<InterviewerOptionDto>> InterviewerOptionsAsync(string resumeId, string? keyword, bool sameDepartmentOnly, CancellationToken ct);
     Task<InterviewDto> CompleteInterviewAsync(string resumeId, string interviewId, CompleteInterviewRequest request, CancellationToken ct);
     Task<IReadOnlyList<InterviewDto>> InterviewsAsync(string resumeId, CancellationToken ct);
     Task ConfirmOfferAsync(string resumeId, ConfirmOfferRequest request, CancellationToken ct);
@@ -75,7 +95,7 @@ public interface IRecruitmentService
 
 public sealed class RecruitmentService(
     IRepository<Resume> resumes, IRepository<InterviewRecord> interviews, IRepository<EmployeeEntry> entries, IRepository<Employee> employees,
-    IRepository<Department> departments, IRepository<Position> positions, IRepository<Tianci.OA.Domain.Identity.SysUser> users,
+    IRepository<Department> departments, IRepository<Position> positions, IInterviewerQuery interviewerQuery,
     ISensitiveDataProtector protector, ISnowflakeIdGenerator ids, IClock clock, ICurrentUser currentUser, IUnitOfWork uow) : IRecruitmentService
 {
     public async Task<PagedResult<ResumeDto>> ListAsync(ResumeQuery q, CancellationToken ct)
@@ -125,7 +145,7 @@ public sealed class RecruitmentService(
         if (resume.Version != r.ResumeVersion) throw new ConflictException("数据已被其他用户修改");
         if (r.ScheduledAt.ToUniversalTime() <= clock.UtcNow) throw new BusinessException("面试时间必须晚于当前时间");
         var interviewerId = IdParser.Parse(r.InterviewerUserId, "interviewerUserId");
-        if (!await users.ExistsAsync(x => x.Id == interviewerId && !x.IsDeleted && x.Status == UserStatus.Enabled, ct)) throw new NotFoundException("面试官不存在或未启用");
+        if (!await interviewerQuery.IsEligibleAsync(interviewerId, ct)) throw new NotFoundException("面试官不存在、未绑定在职员工或账号未启用");
         if (await interviews.ExistsAsync(x => x.ResumeId == resume.Id && x.RoundNo == r.RoundNo && !x.IsDeleted, ct)) throw new ConflictException("该轮面试已存在");
         var interview = new InterviewRecord { ResumeId = resume.Id, RoundNo = r.RoundNo, InterviewerUserId = interviewerId, ScheduledAt = r.ScheduledAt.ToUniversalTime(), Location = r.Location, Remark = r.Remark, Conclusion = InterviewConclusion.Pending };
         EntityAudit.Create(interview, ids, clock, currentUser);
@@ -137,6 +157,13 @@ public sealed class RecruitmentService(
         }
         catch { await uow.RollbackAsync(); throw; }
         return ToDto(interview);
+    }
+    public async Task<IReadOnlyList<InterviewerOptionDto>> InterviewerOptionsAsync(string resumeId, string? keyword, bool sameDepartmentOnly, CancellationToken ct)
+    {
+        var resume = await RequiredResume(resumeId, ct);
+        var appliedPosition = await positions.FirstAsync(x => x.Id == resume.AppliedPositionId && !x.IsDeleted, ct)
+            ?? throw new NotFoundException("应聘岗位不存在");
+        return await interviewerQuery.SearchAsync(appliedPosition.DepartmentId, keyword, sameDepartmentOnly, 50, ct);
     }
     public async Task<InterviewDto> CompleteInterviewAsync(string resumeId, string interviewId, CompleteInterviewRequest r, CancellationToken ct)
     {

@@ -19,6 +19,7 @@ import { interviewApi, organizationApi, resumeApi } from '@/api/modules'
 import type {
   DepartmentDto,
   InterviewDto,
+  InterviewerOptionDto,
   PagedResult,
   PositionDto,
   ResumeDto,
@@ -99,6 +100,9 @@ const positions = ref<PositionDto[]>([])
 const total = ref(0)
 const selectedResume = ref<ResumeDto | null>(null)
 const selectedInterviews = ref<InterviewDto[]>([])
+const interviewerOptions = ref<InterviewerOptionDto[]>([])
+const interviewerLoading = ref(false)
+const sameDepartmentOnly = ref(true)
 const drawerVisible = ref(false)
 const dialogVisible = ref(false)
 const dialogKind = ref<DialogKind>('resume')
@@ -168,7 +172,7 @@ const resumeRules: FormRules<ResumeForm> = {
   appliedPositionId: [{ required: true, message: '请选择应聘岗位', trigger: 'change' }],
 }
 const scheduleRules: FormRules<ScheduleForm> = {
-  interviewerUserId: [{ required: true, message: '请输入面试官用户 ID', trigger: 'blur' }],
+  interviewerUserId: [{ required: true, message: '请选择面试官', trigger: 'change' }],
   scheduledAt: [{ required: true, message: '请选择面试时间', trigger: 'change' }],
 }
 const completeRules: FormRules<CompleteForm> = {
@@ -216,6 +220,9 @@ const statusOptions = computed(() => Object.entries(RESUME_STATUS_LABEL).map(([v
 
 const positionMap = computed<Record<string, string>>(() => Object.fromEntries(
   positions.value.map((item) => [item.id, item.name]),
+))
+const interviewerMap = computed<Record<string, InterviewerOptionDto>>(() => Object.fromEntries(
+  interviewerOptions.value.map((item) => [item.userId, item]),
 ))
 const boardColumns = computed(() => [
   {
@@ -329,6 +336,28 @@ function genderLabel(value: number): string {
   return value === GENDER.Male ? '男' : value === GENDER.Female ? '女' : '未填写'
 }
 
+function interviewerLabel(userId: string): string {
+  const option = interviewerMap.value[userId]
+  return option ? `${option.name} · ${option.positionName}` : `用户 ${userId}`
+}
+
+async function loadInterviewerOptions(keyword = ''): Promise<void> {
+  if (!selectedResume.value) return
+  interviewerLoading.value = true
+  try {
+    interviewerOptions.value = await interviewApi.options(
+      selectedResume.value.id,
+      keyword,
+      sameDepartmentOnly.value,
+    )
+  } catch (error) {
+    interviewerOptions.value = []
+    ElMessage.error(errorText(error))
+  } finally {
+    interviewerLoading.value = false
+  }
+}
+
 function statusTagType(status: number): TagType {
   if (status === RESUME_STATUS.Hired) return 'success'
   if (containsNumber([RESUME_STATUS.Rejected, RESUME_STATUS.OfferDeclined], status)) return 'danger'
@@ -429,12 +458,14 @@ async function showDetail(row: ResumeDto): Promise<void> {
   selectedResume.value = row
   selectedInterviews.value = []
   try {
-    const [detail, interviews] = await Promise.all([
+    const [detail, interviews, interviewers] = await Promise.all([
       resumeApi.get(row.id),
       interviewApi.list(row.id),
+      interviewApi.options(row.id, '', false),
     ])
     selectedResume.value = detail
     selectedInterviews.value = interviews
+    interviewerOptions.value = interviewers
   } catch (error) {
     ElMessage.error(errorText(error))
   } finally {
@@ -463,8 +494,10 @@ function openResumeDialog(row?: ResumeDto): void {
   dialogVisible.value = true
 }
 
-function openScheduleDialog(row: ResumeDto): void {
+async function openScheduleDialog(row: ResumeDto): Promise<void> {
   selectedResume.value = row
+  sameDepartmentOnly.value = true
+  interviewerOptions.value = []
   Object.assign(scheduleForm, {
     roundNo: Math.max(1, row.currentRound + 1),
     interviewerUserId: '',
@@ -474,6 +507,7 @@ function openScheduleDialog(row: ResumeDto): void {
   })
   dialogKind.value = 'schedule'
   dialogVisible.value = true
+  await loadInterviewerOptions()
 }
 
 function openCompleteDialog(row: ResumeDto, interview?: InterviewDto): void {
@@ -968,7 +1002,7 @@ onMounted(() => {
                       </el-button>
                     </header>
                     <dl>
-                      <div><dt>面试官</dt><dd>{{ interview.interviewerUserId }}</dd></div>
+                      <div><dt>面试官</dt><dd>{{ interviewerLabel(interview.interviewerUserId) }}</dd></div>
                       <div><dt>地点</dt><dd>{{ interview.location || '—' }}</dd></div>
                       <div><dt>评分</dt><dd>{{ interview.score ?? '—' }}</dd></div>
                     </dl>
@@ -1224,8 +1258,30 @@ onMounted(() => {
             <el-form-item label="面试轮次" prop="roundNo">
               <el-input-number v-model="scheduleForm.roundNo" :min="1" :max="5" />
             </el-form-item>
-            <el-form-item label="面试官用户 ID" prop="interviewerUserId">
-              <el-input v-model.trim="scheduleForm.interviewerUserId" placeholder="请输入已启用用户 ID" />
+            <el-form-item label="面试官" prop="interviewerUserId">
+              <el-select
+                v-model="scheduleForm.interviewerUserId"
+                filterable
+                remote
+                clearable
+                reserve-keyword
+                :remote-method="loadInterviewerOptions"
+                :loading="interviewerLoading"
+                placeholder="按姓名、工号、账号或岗位搜索"
+                no-data-text="暂无可用面试官，请先关联并启用员工账号"
+              >
+                <el-option
+                  v-for="item in interviewerOptions"
+                  :key="item.userId"
+                  :label="`${item.name}（${item.employeeNo}）· ${item.positionName}`"
+                  :value="item.userId"
+                >
+                  <div class="interviewer-option">
+                    <strong>{{ item.name }}（{{ item.employeeNo }}）</strong>
+                    <span>{{ item.departmentName }} / {{ item.positionName }}</span>
+                  </div>
+                </el-option>
+              </el-select>
             </el-form-item>
             <el-form-item label="面试时间" prop="scheduledAt">
               <el-date-picker
@@ -1238,6 +1294,15 @@ onMounted(() => {
             <el-form-item label="面试地点" prop="location">
               <el-input v-model.trim="scheduleForm.location" maxlength="255" placeholder="会议室或线上会议地址" />
             </el-form-item>
+          </div>
+          <div class="interviewer-filter">
+            <el-switch
+              v-model="sameDepartmentOnly"
+              active-text="优先显示应聘岗位所属部门"
+              inactive-text="搜索全公司"
+              @change="scheduleForm.interviewerUserId = ''; loadInterviewerOptions()"
+            />
+            <small>只有已关联员工且处于启用状态的用户账号可以被选为面试官。</small>
           </div>
           <el-form-item label="备注" prop="remark">
             <el-input v-model="scheduleForm.remark" type="textarea" :rows="3" maxlength="1000" show-word-limit />
@@ -1871,6 +1936,31 @@ onMounted(() => {
 
 .dialog-form-grid {
   margin-top: 18px;
+}
+
+.interviewer-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.interviewer-option span,
+.interviewer-filter small {
+  color: #8b96a8;
+  font-size: 12px;
+}
+
+.interviewer-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -4px 0 18px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f7f9fc;
 }
 
 .form-grid :deep(.el-select),

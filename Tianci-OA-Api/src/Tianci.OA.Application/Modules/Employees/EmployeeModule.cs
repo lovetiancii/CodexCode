@@ -26,6 +26,7 @@ public sealed class EmployeeRequest
 }
 public sealed record EmployeeDto(string Id, string EmployeeNo, string? SourceResumeId, string Name, Gender Gender, string Phone, string? Email, string DepartmentId, string PositionId, EmployeeStatus Status, DateTime EntryDate, byte ProbationMonths, DateTime? RegularDate, DateTime? TerminationDate, string? TerminationReason, int Version);
 public sealed record EmployeeDetailDto(EmployeeDto Employee, string? IdCard, string? MonthlySalary);
+public sealed record RegularizeEmployeeRequest(DateTime RegularDate, int Version);
 public sealed record TerminateEmployeeRequest(DateTime TerminationDate, [Required, StringLength(500)] string Reason, int Version);
 public sealed record EmployeeQuery(string? Keyword, string? DepartmentId, string? PositionId, EmployeeStatus? Status, int PageNumber = 1, int PageSize = 20);
 
@@ -35,6 +36,7 @@ public interface IEmployeeService
     Task<EmployeeDetailDto> GetAsync(string id, bool includeSensitive, CancellationToken ct);
     Task<EmployeeDto> CreateAsync(EmployeeRequest request, CancellationToken ct);
     Task<EmployeeDto> UpdateAsync(string id, EmployeeRequest request, int version, CancellationToken ct);
+    Task<EmployeeDto> RegularizeAsync(string id, RegularizeEmployeeRequest request, CancellationToken ct);
     Task TerminateAsync(string id, TerminateEmployeeRequest request, CancellationToken ct);
     Task ArchiveAsync(string id, int version, CancellationToken ct);
 }
@@ -71,6 +73,24 @@ public sealed class EmployeeService(IRepository<Employee> employees, IRepository
         if (e.Version != version) throw new ConflictException("数据已被其他用户修改");
         await ValidateAsync(r, e.Id, ct); Apply(e, r); var old = e.Version; e.Version++; EntityAudit.Update(e, clock, user);
         if (await employees.UpdateWhereAsync(e, x => x.Id == e.Id && x.Version == old, ct) == 0) throw new ConflictException("数据已被其他用户修改");
+        return ToDto(e);
+    }
+    public async Task<EmployeeDto> RegularizeAsync(string id, RegularizeEmployeeRequest r, CancellationToken ct)
+    {
+        var e = await GetRequired(id, ct);
+        if (e.Status != EmployeeStatus.Probation)
+            throw new ConflictException("仅试用员工可办理转正", "INVALID_STATE_TRANSITION");
+        if (r.RegularDate.Date < e.EntryDate.Date || r.RegularDate.Date > clock.UtcNow.Date)
+            throw new BusinessException("转正日期必须介于入职日期与今天之间");
+        if (e.Version != r.Version) throw new ConflictException("数据已被其他用户修改");
+
+        var old = e.Version;
+        e.Status = EmployeeStatus.Active;
+        e.RegularDate = r.RegularDate.Date;
+        e.Version++;
+        EntityAudit.Update(e, clock, user);
+        if (await employees.UpdateWhereAsync(e, x => x.Id == e.Id && x.Version == old, ct) == 0)
+            throw new ConflictException("数据已被其他用户修改");
         return ToDto(e);
     }
     public async Task TerminateAsync(string id, TerminateEmployeeRequest r, CancellationToken ct)

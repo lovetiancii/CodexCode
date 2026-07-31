@@ -17,6 +17,9 @@ public sealed class ResumesController(IRecruitmentService service) : ControllerB
     [HttpPost, Permission("resume:create")] public Task<ResumeDto> Create(ResumeRequest request, CancellationToken ct) => service.CreateAsync(request, ct);
     [HttpPut("{id}"), Permission("resume:edit")] public Task<ResumeDto> Update(string id, ResumeRequest request, [FromQuery] int version, CancellationToken ct) => service.UpdateAsync(id, request, version, ct);
     [HttpPost("{id}/status"), Permission("resume:manage")] public async Task<IActionResult> Status(string id, ChangeResumeStatusRequest request, CancellationToken ct) { await service.ChangeStatusAsync(id, request, ct); return NoContent(); }
+    [HttpGet("{id}/interviewers"), Permission("resume:interview")]
+    public Task<IReadOnlyList<InterviewerOptionDto>> Interviewers(string id, [FromQuery] string? keyword, [FromQuery] bool sameDepartmentOnly = true, CancellationToken ct = default) =>
+        service.InterviewerOptionsAsync(id, keyword, sameDepartmentOnly, ct);
     [HttpPost("{id}/interviews"), Permission("resume:interview")] public Task<InterviewDto> Schedule(string id, ScheduleInterviewRequest request, CancellationToken ct) => service.ScheduleInterviewAsync(id, request, ct);
     [HttpGet("{id}/interviews"), Permission("resume:view")] public Task<IReadOnlyList<InterviewDto>> Interviews(string id, CancellationToken ct) => service.InterviewsAsync(id, ct);
     [HttpPost("{id}/interviews/{interviewId}/complete"), Permission("resume:interview")] public Task<InterviewDto> Complete(string id, string interviewId, CompleteInterviewRequest request, CancellationToken ct) => service.CompleteInterviewAsync(id, interviewId, request, ct);

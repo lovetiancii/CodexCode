@@ -22,6 +22,7 @@ public sealed class EmployeesController(IEmployeeService service, IPermissionSer
     }
     [HttpPost, Permission("employee:create")] public Task<EmployeeDto> Create(EmployeeRequest request, CancellationToken ct) => service.CreateAsync(request, ct);
     [HttpPut("{id}"), Permission("employee:edit")] public Task<EmployeeDto> Update(string id, EmployeeRequest request, [FromQuery] int version, CancellationToken ct) => service.UpdateAsync(id, request, version, ct);
+    [HttpPost("{id}/regularize"), Permission("employee:edit")] public Task<EmployeeDto> Regularize(string id, RegularizeEmployeeRequest request, CancellationToken ct) => service.RegularizeAsync(id, request, ct);
     [HttpPost("{id}/terminate"), Permission("employee:terminate")] public async Task<IActionResult> Terminate(string id, TerminateEmployeeRequest request, CancellationToken ct) { await service.TerminateAsync(id, request, ct); return NoContent(); }
     [HttpPost("{id}/archive"), Permission("employee:archive")] public async Task<IActionResult> Archive(string id, [FromQuery] int version, CancellationToken ct) { await service.ArchiveAsync(id, version, ct); return NoContent(); }
 }

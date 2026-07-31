@@ -1,7 +1,7 @@
 import { request } from './http'
 import type {
-  AuditLogDto, ContractDto, DepartmentDto, EmployeeDetailDto, EmployeeDto, FileDto, InterviewDto,
-  LoginResponse, MenuDto, PagedResult, PositionDto, ResumeDto, RoleDto, UserDto,
+  AuditLogDto, ContractDto, DepartmentDto, EmployeeDetailDto, EmployeeDto, FileDto, InterviewDto, InterviewerOptionDto,
+  LoginResponse, MenuDto, PagedResult, PositionDto, RegularizeEmployeeRequest, ResumeDto, RoleDto, UserDto,
 } from '@/types/contracts'
 
 export const authApi = {
@@ -13,6 +13,7 @@ export const employeeApi = {
   get: (id: string, includeSensitive = false) => request.get<EmployeeDetailDto>(`/employees/${id}`, { params: { includeSensitive } }),
   create: (data: Record<string, unknown>) => request.post<EmployeeDto>('/employees', data),
   update: (id: string, version: number, data: Record<string, unknown>) => request.put<EmployeeDto>(`/employees/${id}`, data, { params: { version } }),
+  regularize: (id: string, data: RegularizeEmployeeRequest) => request.post<EmployeeDto>(`/employees/${id}/regularize`, data),
   terminate: (id: string, data: { terminationDate: string; reason: string; version: number }) => request.post<void>(`/employees/${id}/terminate`, data),
   archive: (id: string, version: number) => request.post<void>(`/employees/${id}/archive`, undefined, { params: { version } }),
 }
@@ -29,6 +30,8 @@ export const resumeApi = {
 
 export const interviewApi = {
   list: (resumeId: string) => request.get<InterviewDto[]>(`/resumes/${resumeId}/interviews`),
+  options: (resumeId: string, keyword = '', sameDepartmentOnly = true) =>
+    request.get<InterviewerOptionDto[]>(`/resumes/${resumeId}/interviewers`, { params: { keyword, sameDepartmentOnly } }),
   schedule: (resumeId: string, data: Record<string, unknown>) => request.post<InterviewDto>(`/resumes/${resumeId}/interviews`, data),
   complete: (resumeId: string, interviewId: string, data: Record<string, unknown>) => request.post<InterviewDto>(`/resumes/${resumeId}/interviews/${interviewId}/complete`, data),
 }

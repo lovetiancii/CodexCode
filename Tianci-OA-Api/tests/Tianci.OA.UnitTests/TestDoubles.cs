@@ -7,6 +7,7 @@ namespace Tianci.OA.UnitTests;
 internal sealed class InMemoryRepository<T>(params T[] seed) : IRepository<T> where T : class
 {
     public List<T> Items { get; } = [.. seed];
+    public int UpdateWhereResult { get; set; } = 1;
 
     public Task<T?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
         Task.FromResult(Items.FirstOrDefault(x => GetId(x) == id));
@@ -54,7 +55,10 @@ internal sealed class InMemoryRepository<T>(params T[] seed) : IRepository<T> wh
     // in-memory double therefore models a successful atomic database update while
     // concurrency-conflict branches are tested with a purpose-built failing double.
     public Task<int> UpdateWhereAsync(T entity, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Items.Contains(entity) || Items.Any(x => GetId(x) == GetId(entity)) ? 1 : 0);
+        Task.FromResult(
+            Items.Contains(entity) || Items.Any(x => GetId(x) == GetId(entity))
+                ? UpdateWhereResult
+                : 0);
 
     public Task<int> DeleteAsync(T entity, CancellationToken cancellationToken = default) =>
         Task.FromResult(Items.Remove(entity) ? 1 : 0);

@@ -60,6 +60,7 @@ export interface EmployeeDto {
   terminationDate: Nullable<string>; terminationReason: Nullable<string>; version: number
 }
 export interface EmployeeDetailDto { employee: EmployeeDto; idCard: Nullable<string>; monthlySalary: Nullable<string> }
+export interface RegularizeEmployeeRequest { regularDate: string; version: number }
 export interface ResumeDto {
   id: Id; candidateNo: string; name: string; gender: number; phone: string; email: Nullable<string>; education: Nullable<string>
   workExperience: Nullable<string>; skills: Nullable<string>; appliedPositionId: Id; attachmentFileId: Nullable<Id>
@@ -69,6 +70,10 @@ export interface InterviewDto {
   id: Id; resumeId: Id; roundNo: number; interviewerUserId: Id; scheduledAt: string; location: Nullable<string>
   score: Nullable<number>; evaluation: Nullable<string>; conclusion: number; nextScheduledAt: Nullable<string>
   completedAt: Nullable<string>; remark: Nullable<string>
+}
+export interface InterviewerOptionDto {
+  userId: Id; employeeId: Id; employeeNo: string; name: string; departmentId: Id; departmentName: string
+  positionId: Id; positionName: string
 }
 export interface ContractDto {
   id: Id; contractNo: string; employeeId: Id; contractType: number; startDate: string; endDate: string; reminderDays: number
