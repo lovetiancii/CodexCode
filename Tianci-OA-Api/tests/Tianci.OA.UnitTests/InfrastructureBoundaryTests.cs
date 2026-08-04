@@ -23,8 +23,10 @@ public sealed class InfrastructureBoundaryTests
     [Theory]
     [InlineData(-1)]
     [InlineData(1024)]
-    public void Snowflake_rejects_invalid_node(int nodeId) =>
+    public void Snowflake_rejects_invalid_node(int nodeId)
+    {
         Assert.Throws<ArgumentOutOfRangeException>(() => new SnowflakeIdGenerator(nodeId));
+    }
 
     [Fact]
     public void Json_writes_long_ids_as_strings_and_accepts_string_ids()

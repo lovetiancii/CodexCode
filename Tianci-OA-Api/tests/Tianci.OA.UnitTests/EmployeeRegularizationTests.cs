@@ -95,25 +95,37 @@ public sealed class EmployeeRegularizationTests
 
     private static Employee Employee(
         EmployeeStatus status = EmployeeStatus.Probation,
-        int version = 3) => new()
+        int version = 3)
     {
-        Id = 100,
-        EmployeeNo = "E000100",
-        Name = "测试员工",
-        Phone = "13800000000",
-        DepartmentId = 10,
-        PositionId = 20,
-        Status = status,
-        EntryDate = EntryDate,
-        ProbationMonths = 3,
-        Version = version
-    };
+        return new()
+        {
+            Id = 100,
+            EmployeeNo = "E000100",
+            Name = "测试员工",
+            Phone = "13800000000",
+            DepartmentId = 10,
+            PositionId = 20,
+            Status = status,
+            EntryDate = EntryDate,
+            ProbationMonths = 3,
+            Version = version
+        };
+    }
 
     private sealed class Fixture
     {
-        public Employee Employee { get; }
-        public InMemoryRepository<Employee> Employees { get; }
-        public EmployeeService Service { get; }
+        public Employee Employee
+        {
+            get;
+        }
+        public InMemoryRepository<Employee> Employees
+        {
+            get;
+        }
+        public EmployeeService Service
+        {
+            get;
+        }
 
         public Fixture(Employee employee)
         {

@@ -41,5 +41,19 @@ public sealed class SysMenu : AuditedEntity
     public EnabledStatus Status { get; set; } = EnabledStatus.Enabled;
 }
 
-public sealed class SysUserRole { public long Id { get; set; } public long UserId { get; set; } public long RoleId { get; set; } public DateTime CreatedAt { get; set; } public long? CreatedBy { get; set; } }
-public sealed class SysRoleMenu { public long Id { get; set; } public long RoleId { get; set; } public long MenuId { get; set; } public DateTime CreatedAt { get; set; } public long? CreatedBy { get; set; } }
+public sealed class SysUserRole
+{
+    public long Id { get; set; }
+    public long UserId { get; set; }
+    public long RoleId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public long? CreatedBy { get; set; }
+}
+public sealed class SysRoleMenu
+{
+    public long Id { get; set; }
+    public long RoleId { get; set; }
+    public long MenuId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public long? CreatedBy { get; set; }
+}

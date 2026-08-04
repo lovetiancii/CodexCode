@@ -79,23 +79,29 @@ public sealed class WorkflowStateMachineTests
         Assert.Equal(0, fixture.UnitOfWork.Begins);
     }
 
-    private static StartWorkflowRequest Request() => new()
+    private static StartWorkflowRequest Request()
     {
-        WorkflowType = "employee-entry",
-        BusinessType = "resume",
-        BusinessId = 88,
-        RequestId = "start-001",
-        Nodes =
+        return new()
+        {
+            WorkflowType = "employee-entry",
+            BusinessType = "resume",
+            BusinessId = 88,
+            RequestId = "start-001",
+            Nodes =
         [
             new() { NodeCode = "hr-review", NodeName = "HR 审核", SequenceNo = 1, AssigneeUserId = 7 },
             new() { NodeCode = "manager-review", NodeName = "负责人审核", SequenceNo = 2, AssigneeUserId = 7 }
         ]
-    };
+        };
+    }
 
     private sealed class Fixture
     {
         public TrackingUnitOfWork UnitOfWork { get; } = new();
-        public WorkflowService Service { get; }
+        public WorkflowService Service
+        {
+            get;
+        }
 
         public Fixture()
         {
@@ -115,12 +121,15 @@ file static class WorkflowRequestExtensions
 {
     public static StartWorkflowRequest WithNodes(
         this StartWorkflowRequest request,
-        IReadOnlyList<WorkflowNodeRequest> nodes) => new()
+        IReadOnlyList<WorkflowNodeRequest> nodes)
     {
-        WorkflowType = request.WorkflowType,
-        BusinessType = request.BusinessType,
-        BusinessId = request.BusinessId,
-        RequestId = request.RequestId,
-        Nodes = nodes
-    };
+        return new()
+        {
+            WorkflowType = request.WorkflowType,
+            BusinessType = request.BusinessType,
+            BusinessId = request.BusinessId,
+            RequestId = request.RequestId,
+            Nodes = nodes
+        };
+    }
 }

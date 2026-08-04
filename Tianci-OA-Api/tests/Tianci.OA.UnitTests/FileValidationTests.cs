@@ -72,7 +72,10 @@ public sealed class FileValidationTests
     {
         public InMemoryRepository<SysFile> Files { get; } = new();
         public TrackingFileStorage Storage { get; } = new();
-        public FileService Service { get; }
+        public FileService Service
+        {
+            get;
+        }
 
         public Fixture()
         {

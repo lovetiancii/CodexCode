@@ -40,7 +40,9 @@ public sealed class WorkflowService(
                 x => x.InstanceId == existing.Id && x.RequestId == requestId,
                 cancellationToken);
             if (replay?.Action == StartAction)
+            {
                 return await GetAsync(existing.Id, cancellationToken);
+            }
 
             throw new ConflictException("该业务已启动同类型流程。", "WORKFLOW_ALREADY_EXISTS");
         }
@@ -102,7 +104,9 @@ public sealed class WorkflowService(
         catch
         {
             if (!committed)
+            {
                 await unitOfWork.RollbackAsync();
+            }
 
             // A concurrent starter can win the unique business/request constraints.
             // Treat that case as the same successful idempotent request.
@@ -120,7 +124,9 @@ public sealed class WorkflowService(
                          && x.Action == StartAction,
                     cancellationToken);
                 if (racedRecord is not null)
+                {
                     return await GetAsync(racedInstance.Id, cancellationToken);
+                }
             }
 
             throw;
@@ -150,7 +156,9 @@ public sealed class WorkflowService(
         if (replay is not null)
         {
             if (replay.FromNodeId == nodeId && replay.Action == action)
+            {
                 return await GetAsync(instanceId, cancellationToken);
+            }
 
             throw new ConflictException("requestId 已被其他工作流操作使用。", "IDEMPOTENCY_KEY_REUSED");
         }
@@ -205,9 +213,11 @@ public sealed class WorkflowService(
                          && x.Status == WorkflowNodeStatus.Active,
                     cancellationToken);
                 if (updated != 1)
+                {
                     throw new ConflictException(
                         "该节点已被处理，请刷新后重试。",
                         "WORKFLOW_NODE_ALREADY_HANDLED");
+                }
 
                 long? toNodeId = null;
                 if (request.Decision == WorkflowDecision.Reject)
@@ -243,9 +253,11 @@ public sealed class WorkflowService(
                             x => x.Id == nextNode.Id && x.Status == WorkflowNodeStatus.Pending,
                             cancellationToken);
                         if (activated != 1)
+                        {
                             throw new ConflictException(
                                 "下一审批节点状态已变化，请刷新后重试。",
                                 "WORKFLOW_CONCURRENT_UPDATE");
+                        }
 
                         instance.CurrentNodeCode = nextNode.NodeCode;
                         toNodeId = nextNode.Id;
@@ -262,9 +274,11 @@ public sealed class WorkflowService(
                          && x.CurrentNodeCode == currentNode.NodeCode,
                     cancellationToken);
                 if (instanceUpdated != 1)
+                {
                     throw new ConflictException(
                         "流程状态已变化，请刷新后重试。",
                         "WORKFLOW_CONCURRENT_UPDATE");
+                }
 
                 await records.InsertAsync(new WorkflowRecord
                 {
@@ -288,7 +302,9 @@ public sealed class WorkflowService(
         catch
         {
             if (!committed)
+            {
                 await unitOfWork.RollbackAsync();
+            }
 
             // If another copy of the same request completed while this transaction
             // was waiting on a row lock, return its result instead of a conflict.
@@ -299,7 +315,9 @@ public sealed class WorkflowService(
                      && x.Action == action,
                 cancellationToken);
             if (concurrentReplay is not null)
+            {
                 return await GetAsync(instanceId, cancellationToken);
+            }
 
             throw;
         }
@@ -331,8 +349,8 @@ public sealed class WorkflowService(
             instance.Version,
             instance.StartedAt,
             instance.CompletedAt,
-            workflowNodes.OrderBy(x => x.SequenceNo).Select(MapNode).ToArray(),
-            workflowRecords.OrderBy(x => x.OperatedAt).ThenBy(x => x.Id).Select(MapRecord).ToArray());
+            [.. workflowNodes.OrderBy(x => x.SequenceNo).Select(MapNode)],
+            [.. workflowRecords.OrderBy(x => x.OperatedAt).ThenBy(x => x.Id).Select(MapRecord)]);
     }
 
     private async Task CancelRemainingNodesAsync(
@@ -362,40 +380,77 @@ public sealed class WorkflowService(
         long userId)
     {
         if (instance.Status != WorkflowStatus.Running)
+        {
             throw new ConflictException("该流程已结束，不能继续审批。", "WORKFLOW_NOT_RUNNING");
+        }
+
         if (node.Status != WorkflowNodeStatus.Active || instance.CurrentNodeCode != node.NodeCode)
+        {
             throw new ConflictException("该节点不是当前活动审批节点。", "WORKFLOW_NODE_NOT_ACTIVE");
+        }
+
         if (node.AssigneeUserId.HasValue && node.AssigneeUserId.Value != userId)
+        {
             throw new ForbiddenException("当前用户不是该节点的审批人。");
+        }
     }
 
     private static void ValidateStartRequest(StartWorkflowRequest request)
     {
         if (request.BusinessId <= 0)
+        {
             throw new BusinessException("业务 ID 必须大于 0。", "INVALID_BUSINESS_ID");
+        }
+
         if (request.Nodes is null || request.Nodes.Count == 0)
+        {
             throw new BusinessException("工作流至少需要一个审批节点。", "WORKFLOW_NODES_REQUIRED");
+        }
+
         if (request.Nodes.Any(x => x.SequenceNo <= 0))
+        {
             throw new BusinessException("节点顺序必须大于 0。", "INVALID_NODE_SEQUENCE");
+        }
+
         if (request.Nodes.Any(x => string.IsNullOrWhiteSpace(x.NodeCode) || x.NodeCode.Trim().Length > 64))
+        {
             throw new BusinessException("节点编码不能为空且不能超过 64 个字符。", "INVALID_NODE_CODE");
+        }
+
         if (request.Nodes.Any(x => string.IsNullOrWhiteSpace(x.NodeName) || x.NodeName.Trim().Length > 100))
+        {
             throw new BusinessException("节点名称不能为空且不能超过 100 个字符。", "INVALID_NODE_NAME");
+        }
+
         if (request.Nodes.Select(x => x.SequenceNo).Distinct().Count() != request.Nodes.Count)
+        {
             throw new BusinessException("节点顺序不能重复。", "DUPLICATE_NODE_SEQUENCE");
+        }
+
         if (request.Nodes.Select(x => x.NodeCode.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             != request.Nodes.Count)
+        {
             throw new BusinessException("节点编码不能重复。", "DUPLICATE_NODE_CODE");
+        }
+
         if (request.Nodes.Any(x => !Enum.IsDefined(x.ApprovalMode)))
+        {
             throw new BusinessException("节点审批模式无效。", "INVALID_APPROVAL_MODE");
+        }
+
         if (request.Nodes.Any(x => x.AssigneeUserId <= 0))
+        {
             throw new BusinessException("审批人 ID 必须大于 0。", "INVALID_ASSIGNEE");
+        }
     }
 
     private long RequireUser()
     {
         if (!currentUser.IsAuthenticated || currentUser.UserId is not long userId || userId <= 0)
+        {
             throw new ForbiddenException("请登录后执行工作流操作。");
+        }
+
         return userId;
     }
 
@@ -403,22 +458,32 @@ public sealed class WorkflowService(
     {
         var result = value?.Trim() ?? "";
         if (result.Length == 0 || result.Length > maxLength)
+        {
             throw new BusinessException($"{fieldName} 不能为空且不能超过 {maxLength} 个字符。", "INVALID_ARGUMENT");
+        }
+
         return result;
     }
 
     private static string? NullIfWhiteSpace(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
+        {
             return null;
+        }
+
         var result = value.Trim();
         if (result.Length > 2000)
+        {
             throw new BusinessException("审批意见不能超过 2000 个字符。", "INVALID_OPINION");
+        }
+
         return result;
     }
 
-    private static WorkflowNodeDto MapNode(WorkflowNode node) =>
-        new(
+    private static WorkflowNodeDto MapNode(WorkflowNode node)
+    {
+        return new(
             node.Id,
             node.NodeCode,
             node.NodeName,
@@ -428,9 +493,11 @@ public sealed class WorkflowService(
             node.Status,
             node.StartedAt,
             node.CompletedAt);
+    }
 
-    private static WorkflowRecordDto MapRecord(WorkflowRecord record) =>
-        new(
+    private static WorkflowRecordDto MapRecord(WorkflowRecord record)
+    {
+        return new(
             record.Id,
             record.FromNodeId,
             record.ToNodeId,
@@ -439,4 +506,5 @@ public sealed class WorkflowService(
             record.Opinion,
             record.RequestId,
             record.OperatedAt);
+    }
 }

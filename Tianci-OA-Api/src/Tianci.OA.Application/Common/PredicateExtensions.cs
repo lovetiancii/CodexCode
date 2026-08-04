@@ -20,8 +20,10 @@ public static class PredicateExtensions
     private sealed class ParameterReplaceVisitor(ParameterExpression source, ParameterExpression target)
         : ExpressionVisitor
     {
-        protected override Expression VisitParameter(ParameterExpression node) =>
-            node == source ? target : base.VisitParameter(node);
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            return node == source ? target : base.VisitParameter(node);
+        }
     }
 }
 

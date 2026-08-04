@@ -9,17 +9,25 @@ internal sealed class InMemoryRepository<T>(params T[] seed) : IRepository<T> wh
     public List<T> Items { get; } = [.. seed];
     public int UpdateWhereResult { get; set; } = 1;
 
-    public Task<T?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Items.FirstOrDefault(x => GetId(x) == id));
+    public Task<T?> GetByIdAsync(long id, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Items.FirstOrDefault(x => GetId(x) == id));
+    }
 
-    public Task<T?> FirstAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Items.FirstOrDefault(predicate.Compile()));
+    public Task<T?> FirstAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Items.FirstOrDefault(predicate.Compile()));
+    }
 
-    public Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Items.Any(predicate.Compile()));
+    public Task<bool> ExistsAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Items.Any(predicate.Compile()));
+    }
 
-    public Task<IReadOnlyList<T>> ListAsync(Expression<Func<T, bool>>? predicate = null, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<T>>(predicate is null ? [.. Items] : [.. Items.Where(predicate.Compile())]);
+    public Task<IReadOnlyList<T>> ListAsync(Expression<Func<T, bool>>? predicate = null, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<T>>(predicate is null ? [.. Items] : [.. Items.Where(predicate.Compile())]);
+    }
 
     public Task<(IReadOnlyList<T> Items, long Total)> PageAsync(
         Expression<Func<T, bool>> predicate,
@@ -31,7 +39,10 @@ internal sealed class InMemoryRepository<T>(params T[] seed) : IRepository<T> wh
     {
         IEnumerable<T> query = Items.Where(predicate.Compile());
         if (orderBy is not null)
+        {
             query = descending ? query.OrderByDescending(orderBy.Compile()) : query.OrderBy(orderBy.Compile());
+        }
+
         var all = query.ToArray();
         return Task.FromResult<(IReadOnlyList<T>, long)>((all.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToArray(), all.LongLength));
     }
@@ -48,20 +59,26 @@ internal sealed class InMemoryRepository<T>(params T[] seed) : IRepository<T> wh
         return Task.CompletedTask;
     }
 
-    public Task<int> UpdateAsync(T entity, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Items.Contains(entity) || Items.Any(x => GetId(x) == GetId(entity)) ? 1 : 0);
+    public Task<int> UpdateAsync(T entity, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Items.Contains(entity) || Items.Any(x => GetId(x) == GetId(entity)) ? 1 : 0);
+    }
 
     // Services mutate tracked entities before supplying optimistic predicates. The
     // in-memory double therefore models a successful atomic database update while
     // concurrency-conflict branches are tested with a purpose-built failing double.
-    public Task<int> UpdateWhereAsync(T entity, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default) =>
-        Task.FromResult(
+    public Task<int> UpdateWhereAsync(T entity, Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(
             Items.Contains(entity) || Items.Any(x => GetId(x) == GetId(entity))
                 ? UpdateWhereResult
                 : 0);
+    }
 
-    public Task<int> DeleteAsync(T entity, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Items.Remove(entity) ? 1 : 0);
+    public Task<int> DeleteAsync(T entity, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Items.Remove(entity) ? 1 : 0);
+    }
 
     public Task<int> DeleteWhereAsync(Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
     {
@@ -69,15 +86,21 @@ internal sealed class InMemoryRepository<T>(params T[] seed) : IRepository<T> wh
         return Task.FromResult(count);
     }
 
-    private static long GetId(T item) => item is AuditedEntity entity
+    private static long GetId(T item)
+    {
+        return item is AuditedEntity entity
         ? entity.Id
         : (long?)typeof(T).GetProperty("Id")?.GetValue(item) ?? 0;
+    }
 }
 
 internal sealed class StubIds(long first = 1000) : ISnowflakeIdGenerator
 {
     private long _value = first - 1;
-    public long NextId() => Interlocked.Increment(ref _value);
+    public long NextId()
+    {
+        return Interlocked.Increment(ref _value);
+    }
 }
 
 internal sealed class StubClock(DateTime? utcNow = null) : IClock
@@ -95,29 +118,66 @@ internal sealed class StubCurrentUser(long? userId = 7) : ICurrentUser
 
 internal sealed class TrackingUnitOfWork : IUnitOfWork
 {
-    public int Begins { get; private set; }
-    public int Commits { get; private set; }
-    public int Rollbacks { get; private set; }
-    public Task BeginAsync() { Begins++; return Task.CompletedTask; }
-    public Task CommitAsync() { Commits++; return Task.CompletedTask; }
-    public Task RollbackAsync() { Rollbacks++; return Task.CompletedTask; }
+    public int Begins
+    {
+        get; private set;
+    }
+    public int Commits
+    {
+        get; private set;
+    }
+    public int Rollbacks
+    {
+        get; private set;
+    }
+    public Task BeginAsync()
+    {
+        Begins++;
+        return Task.CompletedTask;
+    }
+    public Task CommitAsync()
+    {
+        Commits++;
+        return Task.CompletedTask;
+    }
+    public Task RollbackAsync()
+    {
+        Rollbacks++;
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class StubProtector : ISensitiveDataProtector
 {
-    public string Protect(string plaintext) => $"protected:{plaintext}";
-    public string Unprotect(string ciphertext) => ciphertext["protected:".Length..];
+    public string Protect(string plaintext)
+    {
+        return $"protected:{plaintext}";
+    }
+
+    public string Unprotect(string ciphertext)
+    {
+        return ciphertext["protected:".Length..];
+    }
 }
 
 internal sealed class TrackingFileStorage : IFileStorage
 {
-    public int SaveCalls { get; private set; }
+    public int SaveCalls
+    {
+        get; private set;
+    }
     public Task<string> SaveAsync(Stream stream, string extension, CancellationToken cancellationToken = default)
     {
         SaveCalls++;
         return Task.FromResult($"safe/file{extension}");
     }
-    public Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default) =>
-        Task.FromResult<Stream>(new MemoryStream());
-    public Task DeleteAsync(string storageKey, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<Stream>(new MemoryStream());
+    }
+
+    public Task DeleteAsync(string storageKey, CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
 }

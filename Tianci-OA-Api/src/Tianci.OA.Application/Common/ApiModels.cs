@@ -20,9 +20,13 @@ public sealed class ConflictException(string message, string code = "CONFLICT") 
 
 public static class IdParser
 {
-    public static long Parse(string value, string field = "id") =>
-        long.TryParse(value, out var id) && id > 0 ? id : throw new BusinessException($"{field} 格式无效", "VALIDATION_ERROR");
+    public static long Parse(string value, string field = "id")
+    {
+        return long.TryParse(value, out var id) && id > 0 ? id : throw new BusinessException($"{field} 格式无效", "VALIDATION_ERROR");
+    }
 
-    public static long? ParseNullable(string? value, string field) =>
-        string.IsNullOrWhiteSpace(value) ? null : Parse(value, field);
+    public static long? ParseNullable(string? value, string field)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : Parse(value, field);
+    }
 }

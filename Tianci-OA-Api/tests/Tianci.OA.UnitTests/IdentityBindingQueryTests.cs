@@ -82,18 +82,17 @@ public sealed class IdentityBindingQueryTests
         Assert.Equal(["21", "22"], ids);
     }
 
-    private sealed class Fixture
+    private sealed class Fixture(
+        SysUser[]? users = null,
+        SysRole[]? roles = null,
+        SysMenu[]? menus = null,
+        SysUserRole[]? userRoles = null,
+        SysRoleMenu[]? roleMenus = null)
     {
-        public IdentityService Service { get; }
-
-        public Fixture(
-            SysUser[]? users = null,
-            SysRole[]? roles = null,
-            SysMenu[]? menus = null,
-            SysUserRole[]? userRoles = null,
-            SysRoleMenu[]? roleMenus = null)
+        public IdentityService Service
         {
-            Service = new IdentityService(
+            get;
+        } = new IdentityService(
                 new InMemoryRepository<SysUser>(users ?? []),
                 new InMemoryRepository<SysRole>(roles ?? []),
                 new InMemoryRepository<SysMenu>(menus ?? []),
@@ -107,6 +106,5 @@ public sealed class IdentityBindingQueryTests
                 new StubCurrentUser(),
                 new TrackingUnitOfWork(),
                 null!);
-        }
     }
 }

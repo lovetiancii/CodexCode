@@ -2,6 +2,13 @@
 
 Tianci OA 的 .NET 10 模块化单体后端。解决方案严格分为 Domain、Application、Infrastructure、WebApi 四层，使用 MySQL 8、SqlSugar、JWT、Redis、AutoMapper 与 Swagger。
 
+## 代码组织约定
+
+- C# 代码统一采用 Allman 大括号、4 空格缩进、一行一语句，并通过根目录 `.editorconfig` 固化格式。
+- Controller、Service 接口、Service 实现分别独立文件；业务 DTO 单独放在对应模块的 `*Dtos.cs` 中。
+- Controller 只负责路由、鉴权、参数接收和结果返回，业务逻辑由 Application 层 Service 实现。
+- 超过单行可读范围的方法签名、条件、对象初始化和链式调用必须按语义分行。
+
 ## 功能
 
 - RBAC：用户、角色、菜单 CRUD，角色授权、用户授权、接口权限校验与会话安全戳失效。

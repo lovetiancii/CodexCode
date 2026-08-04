@@ -9,8 +9,15 @@ namespace Tianci.OA.WebApi.Controllers;
 [Authorize]
 [Permission("workflow:manage")]
 [Route("api/v1/workflows")]
-public sealed class WorkflowsController(IWorkflowService workflowService) : ControllerBase
+public sealed class WorkflowsController : ControllerBase
 {
+    private readonly IWorkflowService _workflowService;
+
+    public WorkflowsController(IWorkflowService workflowService)
+    {
+        _workflowService = workflowService;
+    }
+
     /// <summary>启动工作流并激活首个审批节点。</summary>
     [HttpPost]
     [ProducesResponseType<WorkflowInstanceDto>(StatusCodes.Status201Created)]
@@ -20,8 +27,15 @@ public sealed class WorkflowsController(IWorkflowService workflowService) : Cont
         [FromBody] StartWorkflowRequest request,
         CancellationToken cancellationToken)
     {
-        var result = await workflowService.StartAsync(request, cancellationToken);
-        return CreatedAtAction(nameof(Get), new { instanceId = result.Id }, result);
+        var result = await _workflowService.StartAsync(request, cancellationToken);
+
+        return CreatedAtAction(
+            nameof(Get),
+            new
+            {
+                instanceId = result.Id
+            },
+            result);
     }
 
     /// <summary>通过或拒绝当前活动节点；相同 requestId 可安全重试。</summary>
@@ -37,11 +51,13 @@ public sealed class WorkflowsController(IWorkflowService workflowService) : Cont
         [FromBody] ApproveWorkflowNodeRequest request,
         CancellationToken cancellationToken)
     {
-        return Ok(await workflowService.ApproveNodeAsync(
+        var result = await _workflowService.ApproveNodeAsync(
             instanceId,
             nodeId,
             request,
-            cancellationToken));
+            cancellationToken);
+
+        return Ok(result);
     }
 
     /// <summary>查询工作流实例、节点快照与审批记录。</summary>
@@ -52,6 +68,10 @@ public sealed class WorkflowsController(IWorkflowService workflowService) : Cont
         long instanceId,
         CancellationToken cancellationToken)
     {
-        return Ok(await workflowService.GetAsync(instanceId, cancellationToken));
+        var result = await _workflowService.GetAsync(
+            instanceId,
+            cancellationToken);
+
+        return Ok(result);
     }
 }

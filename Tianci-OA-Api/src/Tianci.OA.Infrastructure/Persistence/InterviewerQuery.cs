@@ -33,7 +33,10 @@ public sealed class InterviewerQuery(ISqlSugarClient db) : IInterviewerQuery
                 position.Status == EnabledStatus.Enabled);
 
         if (sameDepartmentOnly)
+        {
             query = query.Where((user, employee, department, position) => employee.DepartmentId == departmentId);
+        }
+
         if (keyword.Length > 0)
         {
             var value = keyword;
@@ -60,7 +63,7 @@ public sealed class InterviewerQuery(ISqlSugarClient db) : IInterviewerQuery
             })
             .ToListAsync(ct);
 
-        return rows.Select(row => new InterviewerOptionDto(
+        return [.. rows.Select(row => new InterviewerOptionDto(
             row.UserId.ToString(),
             row.EmployeeId.ToString(),
             row.EmployeeNo,
@@ -68,11 +71,12 @@ public sealed class InterviewerQuery(ISqlSugarClient db) : IInterviewerQuery
             row.DepartmentId.ToString(),
             row.DepartmentName,
             row.PositionId.ToString(),
-            row.PositionName)).ToArray();
+            row.PositionName))];
     }
 
-    public Task<bool> IsEligibleAsync(long userId, CancellationToken ct) =>
-        db.Queryable<SysUser, Employee>((user, employee) =>
+    public Task<bool> IsEligibleAsync(long userId, CancellationToken ct)
+    {
+        return db.Queryable<SysUser, Employee>((user, employee) =>
                 new JoinQueryInfos(JoinType.Inner, user.EmployeeId == employee.Id))
             .Where((user, employee) =>
                 user.Id == userId &&
@@ -81,6 +85,7 @@ public sealed class InterviewerQuery(ISqlSugarClient db) : IInterviewerQuery
                 !employee.IsDeleted &&
                 (employee.Status == EmployeeStatus.Probation || employee.Status == EmployeeStatus.Active))
             .AnyAsync();
+    }
 
     private sealed class InterviewerOptionRow
     {

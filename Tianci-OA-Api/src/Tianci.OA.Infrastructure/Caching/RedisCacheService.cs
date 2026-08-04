@@ -3,24 +3,110 @@ using Tianci.OA.Application.Abstractions;
 
 namespace Tianci.OA.Infrastructure.Caching;
 
-public sealed class RedisCacheService(string? connectionString) : ICacheService, IAsyncDisposable
+public sealed class RedisCacheService : ICacheService, IAsyncDisposable
 {
-    private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly string? _connectionString;
+    private readonly SemaphoreSlim _connectionLock = new(1, 1);
+
     private ConnectionMultiplexer? _connection;
-    private async Task<IDatabase?> DatabaseAsync()
+
+    public RedisCacheService(string? connectionString)
     {
-        if (string.IsNullOrWhiteSpace(connectionString)) return null;
+        _connectionString = connectionString;
+    }
+
+    public async Task<string?> GetAsync(string key)
+    {
         try
         {
-            if (_connection is { IsConnected: true }) return _connection.GetDatabase();
-            await _gate.WaitAsync();
-            try { _connection ??= await ConnectionMultiplexer.ConnectAsync(connectionString); return _connection.GetDatabase(); }
-            finally { _gate.Release(); }
+            var database = await GetDatabaseAsync();
+
+            return database == null
+                ? null
+                : (string?)await database.StringGetAsync(key);
         }
-        catch { return null; }
+        catch (Exception)
+        {
+            return null;
+        }
     }
-    public async Task<string?> GetAsync(string key) { try { var db = await DatabaseAsync(); return db == null ? null : (string?)await db.StringGetAsync(key); } catch { return null; } }
-    public async Task SetAsync(string key, string value, TimeSpan ttl) { try { var db = await DatabaseAsync(); if (db != null) await db.StringSetAsync(key, value, ttl); } catch { } }
-    public async Task RemoveAsync(params string[] keys) { try { var db = await DatabaseAsync(); if (db != null) await db.KeyDeleteAsync(keys.Select(x => (RedisKey)x).ToArray()); } catch { } }
-    public async ValueTask DisposeAsync() { if (_connection != null) await _connection.DisposeAsync(); _gate.Dispose(); }
+
+    public async Task SetAsync(string key, string value, TimeSpan ttl)
+    {
+        try
+        {
+            var database = await GetDatabaseAsync();
+
+            if (database != null)
+            {
+                await database.StringSetAsync(key, value, ttl);
+            }
+        }
+        catch (Exception)
+        {
+            // 缓存不可用时降级，不阻断主业务。
+        }
+    }
+
+    public async Task RemoveAsync(params string[] keys)
+    {
+        try
+        {
+            var database = await GetDatabaseAsync();
+
+            if (database != null)
+            {
+                var redisKeys = keys.Select(key => (RedisKey)key).ToArray();
+                await database.KeyDeleteAsync(redisKeys);
+            }
+        }
+        catch (Exception)
+        {
+            // 缓存不可用时降级，不阻断主业务。
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_connection != null)
+        {
+            await _connection.DisposeAsync();
+        }
+
+        _connectionLock.Dispose();
+    }
+
+    private async Task<IDatabase?> GetDatabaseAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_connectionString))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (_connection is { IsConnected: true })
+            {
+                return _connection.GetDatabase();
+            }
+
+            await _connectionLock.WaitAsync();
+
+            try
+            {
+                _connection ??= await ConnectionMultiplexer.ConnectAsync(
+                    _connectionString);
+
+                return _connection.GetDatabase();
+            }
+            finally
+            {
+                _connectionLock.Release();
+            }
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
