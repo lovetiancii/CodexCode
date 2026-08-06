@@ -72,6 +72,19 @@ public sealed class ResumesController : ControllerBase
             cancellationToken);
     }
 
+    [HttpPut("{id}/attachment")]
+    [Permission("resume:attachment")]
+    public Task<ResumeDto> SetAttachment(
+        string id,
+        ResumeAttachmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        return _recruitmentService.SetAttachmentAsync(
+            id,
+            request,
+            cancellationToken);
+    }
+
     [HttpPost("{id}/status")]
     [Permission("resume:manage")]
     public async Task<IActionResult> ChangeStatus(
@@ -88,7 +101,7 @@ public sealed class ResumesController : ControllerBase
     }
 
     [HttpGet("{id}/interviewers")]
-    [Permission("resume:interview")]
+    [Permission("resume:schedule")]
     public Task<IReadOnlyList<InterviewerOptionDto>> Interviewers(
         string id,
         [FromQuery] string? keyword,
@@ -103,7 +116,7 @@ public sealed class ResumesController : ControllerBase
     }
 
     [HttpPost("{id}/interviews")]
-    [Permission("resume:interview")]
+    [Permission("resume:schedule")]
     public Task<InterviewDto> ScheduleInterview(
         string id,
         ScheduleInterviewRequest request,
@@ -125,7 +138,7 @@ public sealed class ResumesController : ControllerBase
     }
 
     [HttpPost("{id}/interviews/{interviewId}/complete")]
-    [Permission("resume:interview")]
+    [Permission("resume:evaluate")]
     public Task<InterviewDto> CompleteInterview(
         string id,
         string interviewId,

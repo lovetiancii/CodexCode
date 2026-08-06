@@ -3,6 +3,7 @@ using Tianci.OA.Application.Abstractions;
 using Tianci.OA.Application.Common;
 using Tianci.OA.Domain.Common;
 using Tianci.OA.Domain.Employees;
+using Tianci.OA.Domain.Files;
 using Tianci.OA.Domain.Organization;
 using Tianci.OA.Domain.Recruitment;
 
@@ -13,10 +14,12 @@ public sealed class RecruitmentService(
     IRepository<InterviewRecord> interviews,
     IRepository<EmployeeEntry> entries,
     IRepository<Employee> employees,
+    IRepository<SysFile> files,
     IRepository<Department> departments,
     IRepository<Position> positions,
     IInterviewerQuery interviewerQuery,
     ISensitiveDataProtector protector,
+    IDataScopeService dataScope,
     ISnowflakeIdGenerator ids,
     IClock clock,
     ICurrentUser currentUser,
@@ -33,6 +36,8 @@ public sealed class RecruitmentService(
                 || resume.Name.Contains(keyword)
                 || resume.Phone.Contains(keyword)
                 || (resume.Email != null && resume.Email.Contains(keyword)));
+
+        predicate = await ApplyDataScopeAsync(predicate, ct);
 
         if (pid.HasValue)
         {
@@ -74,6 +79,7 @@ public sealed class RecruitmentService(
             Status = ResumeStatus.Submitted
         };
         Apply(e, r);
+        await ApplyOwnerAsync(e, r.OwnerUserId, true, ct);
         EntityAudit.Create(e, new FixedIdGenerator(next), clock, currentUser);
         await resumes.InsertAsync(e, ct);
         return ToDto(e);
@@ -93,11 +99,58 @@ public sealed class RecruitmentService(
 
         await ValidateResumeAsync(r, ct);
         Apply(e, r);
+        await ApplyOwnerAsync(e, r.OwnerUserId, false, ct);
         var old = e.Version;
         e.Version++;
         EntityAudit.Update(e, clock, currentUser);
         await EnsureOptimisticAsync(resumes.UpdateWhereAsync(e, x => x.Id == e.Id && x.Version == old, ct));
         return ToDto(e);
+    }
+
+    public async Task<ResumeDto> SetAttachmentAsync(
+        string id,
+        ResumeAttachmentRequest request,
+        CancellationToken ct)
+    {
+        var resume = await RequiredResume(id, ct);
+        if (resume.Version != request.Version)
+        {
+            throw new ConflictException("数据已被其他用户修改");
+        }
+
+        var attachmentFileId = IdParser.ParseNullable(
+            request.AttachmentFileId,
+            "attachmentFileId");
+
+        if (attachmentFileId.HasValue)
+        {
+            var fileId = attachmentFileId.Value;
+            var fileExists = await files.ExistsAsync(
+                file => file.Id == fileId
+                    && file.BusinessType == "resume"
+                    && file.BusinessId == resume.Id
+                    && file.Status == FileStatus.Active
+                    && !file.IsDeleted,
+                ct);
+
+            if (!fileExists)
+            {
+                throw new NotFoundException("简历附件不存在或未关联当前简历");
+            }
+        }
+
+        var oldVersion = resume.Version;
+        resume.AttachmentFileId = attachmentFileId;
+        resume.Version++;
+        EntityAudit.Update(resume, clock, currentUser);
+
+        await EnsureOptimisticAsync(resumes.UpdateWhereAsync(
+            resume,
+            entity => entity.Id == resume.Id
+                && entity.Version == oldVersion,
+            ct));
+
+        return ToDto(resume);
     }
     public async Task ChangeStatusAsync(string id, ChangeResumeStatusRequest r, CancellationToken ct)
     {
@@ -240,6 +293,14 @@ public sealed class RecruitmentService(
                     && !entity.IsDeleted,
                 ct)
             ?? throw new NotFoundException("面试记录不存在");
+
+        var scope = await dataScope.GetCurrentAsync(ct);
+        if (scope.Scope == DataScope.Self
+            && interview.InterviewerUserId != scope.UserId)
+        {
+            throw new ForbiddenException("只能提交分配给本人的面试评价");
+        }
+
         if (interview.Conclusion != InterviewConclusion.Pending && interview.Conclusion != InterviewConclusion.Hold)
         {
             throw new ConflictException("本轮面试已完成");
@@ -295,9 +356,16 @@ public sealed class RecruitmentService(
     {
         var id = IdParser.Parse(resumeId);
         _ = await RequiredResume(resumeId, ct);
-        var records = await interviews.ListAsync(
-            interview => interview.ResumeId == id && !interview.IsDeleted,
-            ct);
+        var scope = await dataScope.GetCurrentAsync(ct);
+        var records = scope.Scope == DataScope.Self
+            ? await interviews.ListAsync(
+                interview => interview.ResumeId == id
+                    && interview.InterviewerUserId == scope.UserId
+                    && !interview.IsDeleted,
+                ct)
+            : await interviews.ListAsync(
+                interview => interview.ResumeId == id && !interview.IsDeleted,
+                ct);
 
         return [.. records.OrderBy(interview => interview.RoundNo).Select(ToDto)];
     }
@@ -311,6 +379,12 @@ public sealed class RecruitmentService(
 
         var did = IdParser.Parse(r.DepartmentId, "departmentId");
         var pid = IdParser.Parse(r.PositionId, "positionId");
+        var scope = await dataScope.GetCurrentAsync(ct);
+        if (scope.Scope != DataScope.All)
+        {
+            await dataScope.EnsureCanAccessDepartmentAsync(did, ct);
+        }
+
         var departmentExists = await departments.ExistsAsync(
             department => department.Id == did && !department.IsDeleted,
             ct);
@@ -440,9 +514,23 @@ public sealed class RecruitmentService(
     private async Task ValidateResumeAsync(ResumeRequest r, CancellationToken ct)
     {
         var pid = IdParser.Parse(r.AppliedPositionId, "appliedPositionId");
-        if (!await positions.ExistsAsync(x => x.Id == pid && !x.IsDeleted && x.Status == EnabledStatus.Enabled, ct))
+        var position = await positions.FirstAsync(
+            entity => entity.Id == pid
+                && !entity.IsDeleted
+                && entity.Status == EnabledStatus.Enabled,
+            ct);
+
+        if (position == null)
         {
             throw new NotFoundException("应聘岗位不存在或未启用");
+        }
+
+        var scope = await dataScope.GetCurrentAsync(ct);
+        if (scope.Scope != DataScope.All)
+        {
+            await dataScope.EnsureCanAccessDepartmentAsync(
+                position.DepartmentId,
+                ct);
         }
     }
     private static void Apply(Resume e, ResumeRequest r)
@@ -457,16 +545,86 @@ public sealed class RecruitmentService(
         e.AppliedPositionId = IdParser.Parse(r.AppliedPositionId, "appliedPositionId");
         e.Source = r.Source;
         e.AttachmentFileId = IdParser.ParseNullable(r.AttachmentFileId, "attachmentFileId");
-        e.OwnerUserId = IdParser.ParseNullable(r.OwnerUserId, "ownerUserId");
         e.Remark = r.Remark;
     }
     private async Task<Resume> RequiredResume(string id, CancellationToken ct)
     {
         var resumeId = IdParser.Parse(id);
-        return await resumes.FirstAsync(
+        var resume = await resumes.FirstAsync(
                 resume => resume.Id == resumeId && !resume.IsDeleted,
                 ct)
             ?? throw new NotFoundException("简历不存在");
+
+        await dataScope.EnsureCanAccessResumeAsync(resumeId, ct);
+
+        return resume;
+    }
+
+    private async Task<Expression<Func<Resume, bool>>> ApplyDataScopeAsync(
+        Expression<Func<Resume, bool>> predicate,
+        CancellationToken cancellationToken)
+    {
+        var scope = await dataScope.GetCurrentAsync(cancellationToken);
+        if (scope.Scope == DataScope.All)
+        {
+            return predicate;
+        }
+
+        if (scope.Scope == DataScope.DepartmentAndChildren)
+        {
+            var departmentIds = scope.DepartmentIds.ToArray();
+            var allowedPositions = await positions.ListAsync(
+                position => !position.IsDeleted
+                    && departmentIds.Contains(position.DepartmentId),
+                cancellationToken);
+            var positionIds = allowedPositions
+                .Select(position => position.Id)
+                .ToArray();
+
+            return predicate.And(resume =>
+                positionIds.Contains(resume.AppliedPositionId));
+        }
+
+        var assignedInterviews = await interviews.ListAsync(
+            interview => !interview.IsDeleted
+                && interview.InterviewerUserId == scope.UserId,
+            cancellationToken);
+        var resumeIds = assignedInterviews
+            .Select(interview => interview.ResumeId)
+            .Distinct()
+            .ToArray();
+
+        return predicate.And(resume =>
+            resume.OwnerUserId == scope.UserId
+            || resumeIds.Contains(resume.Id));
+    }
+
+    private async Task ApplyOwnerAsync(
+        Resume resume,
+        string? requestedOwnerUserId,
+        bool isNew,
+        CancellationToken cancellationToken)
+    {
+        var scope = await dataScope.GetCurrentAsync(cancellationToken);
+        var ownerUserId = IdParser.ParseNullable(
+            requestedOwnerUserId,
+            "ownerUserId");
+
+        if (scope.Scope != DataScope.All
+            && ownerUserId.HasValue
+            && ownerUserId.Value != scope.UserId)
+        {
+            throw new ForbiddenException("不能将简历负责人设置为其他用户");
+        }
+
+        if (ownerUserId.HasValue)
+        {
+            resume.OwnerUserId = ownerUserId.Value;
+        }
+        else if (isNew)
+        {
+            resume.OwnerUserId = scope.UserId;
+        }
     }
 
     private static ResumeDto ToDto(Resume resume)
@@ -482,7 +640,9 @@ public sealed class RecruitmentService(
             resume.WorkExperience,
             resume.Skills,
             resume.AppliedPositionId.ToString(),
+            resume.Source,
             resume.AttachmentFileId?.ToString(),
+            resume.OwnerUserId?.ToString(),
             resume.Status,
             resume.CurrentRound,
             resume.RejectReason,

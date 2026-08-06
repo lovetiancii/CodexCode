@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Tianci.OA.Application.Abstractions;
+using Tianci.OA.Application.Common;
 using Tianci.OA.Domain.Common;
 
 namespace Tianci.OA.UnitTests;
@@ -116,6 +117,75 @@ internal sealed class StubCurrentUser(long? userId = 7) : ICurrentUser
     public string? TraceId => "unit-test";
 }
 
+internal sealed class StubDataScope(
+    DataScopeContext? context = null) : IDataScopeService
+{
+    public DataScopeContext Context { get; } = context
+        ?? new DataScopeContext(
+            DataScope.All,
+            7,
+            null,
+            null,
+            new HashSet<long>());
+
+    public Task<DataScopeContext> GetCurrentAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Context);
+    }
+
+    public Task EnsureCanAccessDepartmentAsync(
+        long departmentId,
+        CancellationToken cancellationToken = default)
+    {
+        return EnsureAllowed(
+            Context.IncludesDepartment(departmentId),
+            cancellationToken);
+    }
+
+    public Task EnsureCanAccessEmployeeAsync(
+        long employeeId,
+        CancellationToken cancellationToken = default)
+    {
+        return EnsureAllowed(
+            Context.Scope == DataScope.All || Context.EmployeeId == employeeId,
+            cancellationToken);
+    }
+
+    public Task EnsureCanAccessResumeAsync(
+        long resumeId,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task EnsureCanAccessContractAsync(
+        long contractId,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task EnsureCanAccessEntryAsync(
+        long entryId,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
+
+    private static Task EnsureAllowed(
+        bool allowed,
+        CancellationToken cancellationToken)
+    {
+        if (!allowed)
+        {
+            throw new ForbiddenException("当前记录超出你的数据权限范围");
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class TrackingUnitOfWork : IUnitOfWork
 {
     public int Begins
@@ -157,6 +227,24 @@ internal sealed class StubProtector : ISensitiveDataProtector
     public string Unprotect(string ciphertext)
     {
         return ciphertext["protected:".Length..];
+    }
+}
+
+internal sealed class StubCache : ICacheService
+{
+    public Task<string?> GetAsync(string key)
+    {
+        return Task.FromResult<string?>(null);
+    }
+
+    public Task SetAsync(string key, string value, TimeSpan ttl)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(params string[] keys)
+    {
+        return Task.CompletedTask;
     }
 }
 

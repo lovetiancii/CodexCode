@@ -5,19 +5,31 @@ import {
   Calendar,
   Check,
   Close,
+  Delete,
   Document,
+  Download,
   Edit,
   Plus,
   Refresh,
   Search,
   TrendCharts,
+  UploadFilled,
   UserFilled,
   View,
 } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { interviewApi, organizationApi, resumeApi } from '@/api/modules'
+import {
+  ElMessage,
+  ElMessageBox,
+  type FormInstance,
+  type FormRules,
+  type UploadRequestOptions,
+} from 'element-plus'
+import { fileApi, interviewApi, organizationApi, resumeApi } from '@/api/modules'
+import { http } from '@/api/http'
+import { useAuthStore } from '@/stores/auth'
 import type {
   DepartmentDto,
+  FileDto,
   InterviewDto,
   InterviewerOptionDto,
   PagedResult,
@@ -45,7 +57,6 @@ interface ResumeForm {
   skills: string
   appliedPositionId: string
   source: string
-  attachmentFileId: string
   ownerUserId: string
   remark: string
 }
@@ -84,6 +95,7 @@ interface EntryForm {
 }
 
 const route = useRoute()
+const auth = useAuthStore()
 const validModes: RecruitmentMode[] = ['board', 'resumes', 'interviews', 'entry']
 const mode = computed<RecruitmentMode>(() => {
   const value = String(route.meta.mode ?? 'board') as RecruitmentMode
@@ -100,6 +112,8 @@ const positions = ref<PositionDto[]>([])
 const total = ref(0)
 const selectedResume = ref<ResumeDto | null>(null)
 const selectedInterviews = ref<InterviewDto[]>([])
+const resumeFiles = ref<FileDto[]>([])
+const uploadProgress = ref(0)
 const interviewerOptions = ref<InterviewerOptionDto[]>([])
 const interviewerLoading = ref(false)
 const sameDepartmentOnly = ref(true)
@@ -127,7 +141,6 @@ const emptyResumeForm = (): ResumeForm => ({
   skills: '',
   appliedPositionId: '',
   source: '',
-  attachmentFileId: '',
   ownerUserId: '',
   remark: '',
 })
@@ -338,6 +351,10 @@ function genderLabel(value: number): string {
 
 function interviewerLabel(userId: string): string {
   const option = interviewerMap.value[userId]
+  if (!option && userId === auth.user?.id) {
+    return `${auth.user.displayName} · 本人`
+  }
+
   return option ? `${option.name} · ${option.positionName}` : `用户 ${userId}`
 }
 
@@ -457,15 +474,23 @@ async function showDetail(row: ResumeDto): Promise<void> {
   detailLoading.value = true
   selectedResume.value = row
   selectedInterviews.value = []
+  resumeFiles.value = []
+  uploadProgress.value = 0
   try {
-    const [detail, interviews, interviewers] = await Promise.all([
+    const [detail, interviews, interviewers, files] = await Promise.all([
       resumeApi.get(row.id),
       interviewApi.list(row.id),
-      interviewApi.options(row.id, '', false),
+      auth.has('resume:schedule')
+        ? interviewApi.options(row.id, '', false)
+        : Promise.resolve([]),
+      auth.has('file:download')
+        ? fileApi.list('resume', row.id)
+        : Promise.resolve([]),
     ])
     selectedResume.value = detail
     selectedInterviews.value = interviews
     interviewerOptions.value = interviewers
+    resumeFiles.value = files
   } catch (error) {
     ElMessage.error(errorText(error))
   } finally {
@@ -486,7 +511,8 @@ function openResumeDialog(row?: ResumeDto): void {
       workExperience: row.workExperience ?? '',
       skills: row.skills ?? '',
       appliedPositionId: row.appliedPositionId,
-      attachmentFileId: row.attachmentFileId ?? '',
+      source: row.source ?? '',
+      ownerUserId: row.ownerUserId ?? '',
       remark: row.remark ?? '',
     })
   }
@@ -571,7 +597,7 @@ async function submitDialog(): Promise<void> {
         workExperience: resumeForm.workExperience || null,
         skills: resumeForm.skills || null,
         source: resumeForm.source || null,
-        attachmentFileId: resumeForm.attachmentFileId || null,
+        attachmentFileId: editingResume.value?.attachmentFileId || null,
         ownerUserId: resumeForm.ownerUserId || null,
         remark: resumeForm.remark || null,
       }
@@ -625,6 +651,80 @@ async function submitDialog(): Promise<void> {
   } finally {
     actionLoading.value = false
   }
+}
+
+function replaceResume(updated: ResumeDto): void {
+  selectedResume.value = updated
+  const index = resumeRows.value.findIndex((item) => item.id === updated.id)
+  if (index >= 0) resumeRows.value[index] = updated
+}
+
+async function setPrimaryResumeFile(fileId: string | null): Promise<void> {
+  if (!selectedResume.value) return
+
+  const updated = await resumeApi.setAttachment(
+    selectedResume.value.id,
+    selectedResume.value.version,
+    fileId,
+  )
+  replaceResume(updated)
+}
+
+async function uploadResumeFile(options: UploadRequestOptions): Promise<void> {
+  if (!selectedResume.value) return
+
+  const formData = new FormData()
+  formData.append('businessType', 'resume')
+  formData.append('businessId', selectedResume.value.id)
+  formData.append('category', 'resume-original')
+  formData.append('file', options.file)
+  uploadProgress.value = 0
+
+  const uploaded = await fileApi.upload(formData, (percentage) => {
+    uploadProgress.value = percentage
+  })
+  resumeFiles.value.unshift(uploaded)
+  await setPrimaryResumeFile(uploaded.id)
+  options.onSuccess(uploaded)
+  uploadProgress.value = 100
+  ElMessage.success('简历已上传并自动关联')
+}
+
+async function downloadResumeFile(file: FileDto): Promise<void> {
+  const response = await http.get(`/files/${file.id}/download`, {
+    responseType: 'blob',
+  })
+  const url = URL.createObjectURL(response.data as Blob)
+  const anchor = document.createElement('a')
+
+  anchor.href = url
+  anchor.download = file.originalName
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+async function removeResumeFile(file: FileDto): Promise<void> {
+  if (!selectedResume.value) return
+
+  await ElMessageBox.confirm(
+    `确认删除简历附件“${file.originalName}”？`,
+    '删除附件',
+    { type: 'warning' },
+  )
+
+  if (selectedResume.value.attachmentFileId === file.id) {
+    await setPrimaryResumeFile(null)
+  }
+
+  await fileApi.remove(file.id)
+  resumeFiles.value = resumeFiles.value.filter((item) => item.id !== file.id)
+  ElMessage.success('简历附件已删除')
+}
+
+function formatFileSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) return `${sizeBytes} B`
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`
+  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 async function advanceStatus(row: ResumeDto, targetStatus: number, label: string): Promise<void> {
@@ -875,7 +975,7 @@ onMounted(() => {
               </el-button>
               <el-button
                 v-if="containsNumber([RESUME_STATUS.Screening, RESUME_STATUS.InterviewPending], row.status)"
-                v-permission="'resume:interview'"
+                v-permission="'resume:schedule'"
                 link
                 type="primary"
                 @click="openScheduleDialog(row)"
@@ -964,7 +1064,7 @@ onMounted(() => {
               <div>
                 <el-button
                   v-if="containsNumber([RESUME_STATUS.Screening, RESUME_STATUS.InterviewPending], selectedResume.status)"
-                  v-permission="'resume:interview'"
+                  v-permission="'resume:schedule'"
                   type="primary"
                   :icon="Calendar"
                   @click="openScheduleDialog(selectedResume)"
@@ -993,7 +1093,7 @@ onMounted(() => {
                       </div>
                       <el-button
                         v-if="containsNumber([INTERVIEW_CONCLUSION.Pending, INTERVIEW_CONCLUSION.Hold], interview.conclusion)"
-                        v-permission="'resume:interview'"
+                        v-permission="'resume:evaluate'"
                         link
                         type="primary"
                         @click="openCompleteDialog(selectedResume, interview)"
@@ -1013,7 +1113,7 @@ onMounted(() => {
               <el-empty v-else description="尚未安排面试">
                 <el-button
                   v-if="containsNumber([RESUME_STATUS.Screening, RESUME_STATUS.InterviewPending], selectedResume.status)"
-                  v-permission="'resume:interview'"
+                  v-permission="'resume:schedule'"
                   type="primary"
                   @click="openScheduleDialog(selectedResume)"
                 >
@@ -1134,12 +1234,91 @@ onMounted(() => {
           <h3>淘汰原因</h3>
           <p>{{ selectedResume.rejectReason }}</p>
         </section>
+        <section class="detail-section resume-attachment-section">
+          <div class="section-heading">
+            <div>
+              <h3>简历附件</h3>
+              <small>先保存候选人，再上传 PDF、DOC、DOCX、JPG 或 PNG，最大 20 MB</small>
+            </div>
+          </div>
+          <el-upload
+            v-if="auth.has('file:upload') && auth.has('resume:attachment')"
+            drag
+            :show-file-list="false"
+            :http-request="uploadResumeFile"
+            accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+          >
+            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+            <div class="el-upload__text">拖放简历或<em>点击上传</em></div>
+          </el-upload>
+          <el-progress
+            v-if="uploadProgress > 0 && uploadProgress < 100"
+            :percentage="uploadProgress"
+          />
+          <div v-if="resumeFiles.length" class="resume-file-list">
+            <article v-for="file in resumeFiles" :key="file.id">
+              <div class="resume-file-meta">
+                <el-icon><Document /></el-icon>
+                <div>
+                  <strong>{{ file.originalName }}</strong>
+                  <small>{{ formatFileSize(file.sizeBytes) }}</small>
+                </div>
+                <el-tag
+                  v-if="selectedResume.attachmentFileId === file.id"
+                  type="success"
+                  size="small"
+                >
+                  当前附件
+                </el-tag>
+              </div>
+              <div class="resume-file-actions">
+                <el-button
+                  v-if="auth.has('file:download')"
+                  link
+                  type="primary"
+                  :icon="Download"
+                  @click="downloadResumeFile(file)"
+                >
+                  下载
+                </el-button>
+                <el-button
+                  v-if="auth.has('resume:attachment') && selectedResume.attachmentFileId !== file.id"
+                  link
+                  type="success"
+                  @click="setPrimaryResumeFile(file.id)"
+                >
+                  设为当前
+                </el-button>
+                <el-button
+                  v-if="auth.has('file:delete') && auth.has('resume:attachment')"
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  @click="removeResumeFile(file)"
+                >
+                  删除
+                </el-button>
+              </div>
+            </article>
+          </div>
+          <el-empty
+            v-else-if="auth.has('file:download')"
+            description="暂无简历附件"
+            :image-size="54"
+          />
+          <el-alert
+            v-else
+            title="当前角色没有附件查看权限"
+            type="info"
+            :closable="false"
+          />
+        </section>
         <section class="detail-section">
           <div class="section-heading">
             <h3>面试记录</h3>
             <el-button
               v-if="containsNumber([RESUME_STATUS.Screening, RESUME_STATUS.InterviewPending], selectedResume.status)"
-              v-permission="'resume:interview'"
+              v-permission="'resume:schedule'"
               link
               type="primary"
               @click="openScheduleDialog(selectedResume)"
@@ -1232,10 +1411,13 @@ onMounted(() => {
             <el-form-item label="招聘来源" prop="source">
               <el-input v-model.trim="resumeForm.source" maxlength="64" placeholder="如：招聘网站、内推" />
             </el-form-item>
-            <el-form-item label="附件文件 ID" prop="attachmentFileId">
-              <el-input v-model.trim="resumeForm.attachmentFileId" placeholder="可在文件上传后回填" />
-            </el-form-item>
           </div>
+          <el-alert
+            title="简历保存后，请在候选人详情的“简历附件”区域上传文件。"
+            type="info"
+            show-icon
+            :closable="false"
+          />
           <el-form-item label="工作经历" prop="workExperience">
             <el-input v-model="resumeForm.workExperience" type="textarea" :rows="3" maxlength="2000" show-word-limit />
           </el-form-item>
@@ -1883,6 +2065,63 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.section-heading small {
+  color: #8b96a8;
+}
+
+.resume-attachment-section :deep(.el-upload),
+.resume-attachment-section :deep(.el-upload-dragger) {
+  width: 100%;
+}
+
+.resume-attachment-section :deep(.el-upload-dragger) {
+  padding: 18px;
+  margin-top: 12px;
+}
+
+.resume-file-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.resume-file-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8edf5;
+  border-radius: 8px;
+  background: #f9fbfe;
+}
+
+.resume-file-meta,
+.resume-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resume-file-meta {
+  min-width: 0;
+}
+
+.resume-file-meta > div {
+  display: grid;
+  min-width: 0;
+}
+
+.resume-file-meta strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume-file-meta small {
+  color: #929cad;
 }
 
 .drawer-interviews {

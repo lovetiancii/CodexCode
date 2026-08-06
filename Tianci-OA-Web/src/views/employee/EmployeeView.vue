@@ -255,22 +255,22 @@ onActivated(load)
     </template>
 
     <section v-else-if="mode === 'departments'" class="panel table-panel" v-loading="loading">
-      <div class="table-toolbar"><div><h2>部门树</h2><span>共 {{ departments.length }} 个部门</span></div><el-button type="primary" :icon="Plus" @click="openDepartment()">新增部门</el-button></div>
+      <div class="table-toolbar"><div><h2>部门树</h2><span>共 {{ departments.length }} 个部门</span></div><el-button v-permission="'organization:manage'" type="primary" :icon="Plus" @click="openDepartment()">新增部门</el-button></div>
       <el-table :data="departments" row-key="id" :tree-props="{ children: 'children' }" empty-text="暂无部门">
         <el-table-column prop="name" label="部门名称" min-width="180" /><el-table-column prop="code" label="编码" min-width="140" />
         <el-table-column prop="sortOrder" label="排序" width="90" /><el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template></el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip /><el-table-column label="操作" width="150"><template #default="{ row }"><el-button link type="primary" :icon="Edit" @click="openDepartment(row)">编辑</el-button><el-button link type="danger" :icon="Delete" @click="deleteDepartment(row)">删除</el-button></template></el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip /><el-table-column label="操作" width="150"><template #default="{ row }"><el-button v-permission="'organization:manage'" link type="primary" :icon="Edit" @click="openDepartment(row)">编辑</el-button><el-button v-permission="'organization:manage'" link type="danger" :icon="Delete" @click="deleteDepartment(row)">删除</el-button></template></el-table-column>
       </el-table>
       <el-empty v-if="!loading && !departments.length" description="暂无部门，点击右上角新增" />
     </section>
 
     <section v-else class="panel table-panel" v-loading="loading">
-      <div class="table-toolbar"><div><h2>岗位列表</h2><span>共 {{ positions.length }} 个岗位</span></div><el-button type="primary" :icon="Plus" @click="openPosition()">新增岗位</el-button></div>
+      <div class="table-toolbar"><div><h2>岗位列表</h2><span>共 {{ positions.length }} 个岗位</span></div><el-button v-permission="'organization:manage'" type="primary" :icon="Plus" @click="openPosition()">新增岗位</el-button></div>
       <el-table :data="positions" stripe empty-text="暂无岗位">
         <el-table-column prop="name" label="岗位名称" min-width="170" /><el-table-column prop="code" label="编码" min-width="140" />
         <el-table-column label="所属部门" min-width="160"><template #default="{ row }">{{ departmentMap[row.departmentId] || '—' }}</template></el-table-column>
         <el-table-column label="状态" width="100"><template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template></el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip /><el-table-column label="操作" width="150"><template #default="{ row }"><el-button link type="primary" :icon="Edit" @click="openPosition(row)">编辑</el-button><el-button link type="danger" :icon="Delete" @click="deletePosition(row)">删除</el-button></template></el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip /><el-table-column label="操作" width="150"><template #default="{ row }"><el-button v-permission="'organization:manage'" link type="primary" :icon="Edit" @click="openPosition(row)">编辑</el-button><el-button v-permission="'organization:manage'" link type="danger" :icon="Delete" @click="deletePosition(row)">删除</el-button></template></el-table-column>
       </el-table>
     </section>
 

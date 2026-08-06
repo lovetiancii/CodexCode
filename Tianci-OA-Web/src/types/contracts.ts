@@ -63,7 +63,8 @@ export interface EmployeeDetailDto { employee: EmployeeDto; idCard: Nullable<str
 export interface RegularizeEmployeeRequest { regularDate: string; version: number }
 export interface ResumeDto {
   id: Id; candidateNo: string; name: string; gender: number; phone: string; email: Nullable<string>; education: Nullable<string>
-  workExperience: Nullable<string>; skills: Nullable<string>; appliedPositionId: Id; attachmentFileId: Nullable<Id>
+  workExperience: Nullable<string>; skills: Nullable<string>; appliedPositionId: Id; source: Nullable<string>
+  attachmentFileId: Nullable<Id>; ownerUserId: Nullable<Id>
   status: number; currentRound: number; rejectReason: Nullable<string>; remark: Nullable<string>; version: number
 }
 export interface InterviewDto {

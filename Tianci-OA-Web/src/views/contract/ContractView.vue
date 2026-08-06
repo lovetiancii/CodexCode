@@ -5,11 +5,13 @@ import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus
 import { Download, Edit, Plus, Refresh, Search, View } from '@element-plus/icons-vue'
 import { contractApi, employeeApi, fileApi } from '@/api/modules'
 import { http } from '@/api/http'
+import { useAuthStore } from '@/stores/auth'
 import {
   CONTRACT_STATUS, CONTRACT_STATUS_LABEL, CONTRACT_TYPE, CONTRACT_TYPE_LABEL, type ContractDto, type EmployeeDto, type FileDto,
 } from '@/types/contracts'
 
 const route = useRoute()
+const auth = useAuthStore()
 const loading = ref(false)
 const error = ref('')
 const rows = ref<ContractDto[]>([])
@@ -88,7 +90,9 @@ async function showDetail(row: ContractDto) {
   detailOpen.value = true; detail.value = null; files.value = []
   try {
     detail.value = await contractApi.get(row.id)
-    files.value = await fileApi.list('contract', row.id)
+    files.value = auth.has('file:download')
+      ? await fileApi.list('contract', row.id)
+      : []
   } catch { detailOpen.value = false }
 }
 async function action(row: ContractDto, type: 'activate' | 'terminate' | 'archive') {
@@ -187,9 +191,9 @@ onActivated(load)
         <div class="detail-hero"><div class="document-avatar">合</div><div><h2>{{ detail.contractNo }}</h2><p>{{ employeeMap[detail.employeeId] }} · {{ CONTRACT_STATUS_LABEL[detail.status] }}</p></div></div>
         <el-descriptions :column="2" border><el-descriptions-item label="合同类型">{{ CONTRACT_TYPE_LABEL[detail.contractType] }}</el-descriptions-item><el-descriptions-item label="提醒天数">{{ detail.reminderDays }} 天</el-descriptions-item><el-descriptions-item label="开始日期">{{ detail.startDate.slice(0,10) }}</el-descriptions-item><el-descriptions-item label="结束日期">{{ detail.endDate.slice(0,10) }}</el-descriptions-item><el-descriptions-item label="备注" :span="2">{{ detail.remark || '—' }}</el-descriptions-item></el-descriptions>
         <div class="attachment-section"><div class="panel-heading"><div><h2>合同附件</h2><p>支持 PDF、DOC、DOCX、JPG、PNG，最大 20 MB</p></div></div>
-          <el-upload v-if="detail.status === CONTRACT_STATUS.Draft" drag :show-file-list="false" :http-request="upload" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"><el-icon class="el-icon--upload"><UploadFilled /></el-icon><div class="el-upload__text">拖放文件或<em>点击上传</em></div></el-upload>
+          <el-upload v-if="detail.status === CONTRACT_STATUS.Draft && auth.has('contract:manage') && auth.has('file:upload')" drag :show-file-list="false" :http-request="upload" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"><el-icon class="el-icon--upload"><UploadFilled /></el-icon><div class="el-upload__text">拖放文件或<em>点击上传</em></div></el-upload>
           <el-progress v-if="uploadProgress > 0 && uploadProgress < 100" :percentage="uploadProgress" />
-          <div v-if="files.length" class="file-list"><div v-for="file in files" :key="file.id"><span><Document />{{ file.originalName }}</span><div><el-button link type="primary" :icon="Download" @click="download(file)">下载</el-button><el-button v-if="detail.status === CONTRACT_STATUS.Draft" v-permission="'file:delete'" link type="danger" @click="removeFile(file)">删除</el-button></div></div></div>
+          <div v-if="files.length" class="file-list"><div v-for="file in files" :key="file.id"><span><Document />{{ file.originalName }}</span><div><el-button v-permission="'file:download'" link type="primary" :icon="Download" @click="download(file)">下载</el-button><el-button v-if="detail.status === CONTRACT_STATUS.Draft" v-permission="'file:delete'" link type="danger" @click="removeFile(file)">删除</el-button></div></div></div>
           <el-empty v-else description="暂无附件" :image-size="64" />
         </div>
       </template>

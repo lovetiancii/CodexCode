@@ -16,6 +16,7 @@ public sealed class FileService(
     IRepository<EmployeeEntry> entries,
     IRepository<EmployeeContract> contracts,
     IFileStorage storage,
+    IDataScopeService dataScope,
     ISnowflakeIdGenerator ids,
     IClock clock,
     ICurrentUser user) : IFileService
@@ -206,6 +207,31 @@ public sealed class FileService(
         {
             throw new NotFoundException("附件关联的业务记录不存在");
         }
+
+        await EnsureDataScopeAsync(type, id, cancellationToken);
+    }
+
+    private Task EnsureDataScopeAsync(
+        string type,
+        long id,
+        CancellationToken cancellationToken)
+    {
+        return type.ToLowerInvariant() switch
+        {
+            "resume" => dataScope.EnsureCanAccessResumeAsync(
+                id,
+                cancellationToken),
+            "employee" => dataScope.EnsureCanAccessEmployeeAsync(
+                id,
+                cancellationToken),
+            "entry" => dataScope.EnsureCanAccessEntryAsync(
+                id,
+                cancellationToken),
+            "contract" => dataScope.EnsureCanAccessContractAsync(
+                id,
+                cancellationToken),
+            _ => throw new BusinessException("不支持的业务附件类型")
+        };
     }
 
     private async Task<SysFile> Required(

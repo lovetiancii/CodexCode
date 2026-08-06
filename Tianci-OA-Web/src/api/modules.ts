@@ -30,6 +30,8 @@ export const resumeApi = {
   get: (id: string) => request.get<ResumeDto>(`/resumes/${id}`),
   create: (data: Record<string, unknown>) => request.post<ResumeDto>('/resumes', data),
   update: (id: string, version: number, data: Record<string, unknown>) => request.put<ResumeDto>(`/resumes/${id}`, data, { params: { version } }),
+  setAttachment: (id: string, version: number, attachmentFileId: string | null) =>
+    request.put<ResumeDto>(`/resumes/${id}/attachment`, { attachmentFileId, version }),
   changeStatus: (id: string, data: { targetStatus: number; reason?: string; version: number }) => request.post<void>(`/resumes/${id}/status`, data),
   confirmOffer: (id: string, data: Record<string, unknown>) => request.post<void>(`/resumes/${id}/confirm-offer`, data),
   confirmEntry: (id: string, data: Record<string, unknown>) => request.post<{ employeeId: string }>(`/resumes/${id}/confirm-entry`, data),

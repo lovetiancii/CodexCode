@@ -86,6 +86,7 @@ public sealed class FileValidationTests
                 new InMemoryRepository<EmployeeEntry>(),
                 new InMemoryRepository<EmployeeContract>(),
                 Storage,
+                new StubDataScope(),
                 new StubIds(),
                 new StubClock(),
                 new StubCurrentUser());

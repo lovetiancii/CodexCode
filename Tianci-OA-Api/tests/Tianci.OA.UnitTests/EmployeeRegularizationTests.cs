@@ -136,6 +136,7 @@ public sealed class EmployeeRegularizationTests
                 new InMemoryRepository<Department>(),
                 new InMemoryRepository<Position>(),
                 new StubProtector(),
+                new StubDataScope(),
                 new StubIds(),
                 new StubClock(Today),
                 new StubCurrentUser());

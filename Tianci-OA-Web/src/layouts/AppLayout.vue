@@ -35,8 +35,8 @@ function signOut() {
           <el-sub-menu index="employee">
             <template #title><el-icon><UserFilled /></el-icon><span>人员管理</span></template>
             <el-menu-item v-if="auth.has('employee:view')" index="/employees"><el-icon><Postcard /></el-icon>员工档案</el-menu-item>
-            <el-menu-item v-if="auth.has('organization:manage')" index="/departments"><el-icon><OfficeBuilding /></el-icon>组织架构</el-menu-item>
-            <el-menu-item v-if="auth.has('organization:manage')" index="/positions"><el-icon><Position /></el-icon>岗位管理</el-menu-item>
+            <el-menu-item v-if="auth.has('organization:view')" index="/departments"><el-icon><OfficeBuilding /></el-icon>组织架构</el-menu-item>
+            <el-menu-item v-if="auth.has('organization:view')" index="/positions"><el-icon><Position /></el-icon>岗位管理</el-menu-item>
           </el-sub-menu>
           <el-sub-menu index="recruitment">
             <template #title><el-icon><Briefcase /></el-icon><span>招聘管理</span></template>

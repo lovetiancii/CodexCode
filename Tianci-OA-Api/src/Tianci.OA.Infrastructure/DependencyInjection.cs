@@ -77,6 +77,7 @@ public static class DependencyInjection
         services.AddScoped<IPasswordService, PasswordService>();
         services.AddScoped<ITokenIssuer, TokenIssuer>();
         services.AddScoped<IPermissionService, PermissionService>();
+        services.AddScoped<IDataScopeService, DataScopeService>();
         services.AddScoped<IAuditWriter, AuditWriter>();
         services.AddScoped(typeof(IRepository<>), typeof(SqlSugarRepository<>));
         services.AddScoped<IUnitOfWork, SqlSugarUnitOfWork>();

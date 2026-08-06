@@ -33,6 +33,11 @@ const roleForm = reactive({ name: '', code: '', dataScope: 3, status: 1, remark:
 const menuForm = reactive({ parentId: '', type: 2, name: '', routePath: '', component: '', permissionCode: '', icon: '', sortOrder: 0, visible: true, status: 1 })
 const title = computed(() => ({ users: '用户管理', roles: '角色管理', menus: '菜单权限', audit: '操作日志' })[mode.value] || '系统管理')
 const departmentMap = computed(() => Object.fromEntries(departments.value.map((item) => [item.id, item.name])))
+const dataScopeDescription = computed(() => ({
+  1: '可访问企业内全部业务数据。',
+  2: '以用户绑定的所属部门为起点，包含该部门及所有下级部门。',
+  3: '员工和合同按账号绑定的员工 ID 判断，未绑定员工时不可见；简历按负责人或本人面试任务判断。',
+})[roleForm.dataScope as 1 | 2 | 3])
 
 function clean(record: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== '' && value !== undefined))
@@ -260,7 +265,33 @@ onActivated(load)
           <el-form-item v-else label="角色"><el-select v-model="userForm.roleIds" multiple><el-option v-for="item in roles" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
         </div>
       </el-form>
-      <el-form v-else-if="mode === 'roles'" :model="roleForm" label-position="top"><el-form-item label="角色名称" required><el-input v-model="roleForm.name" /></el-form-item><el-form-item label="角色编码" required><el-input v-model="roleForm.code" placeholder="例如 HR_MANAGER" /></el-form-item><el-form-item label="数据范围"><el-select v-model="roleForm.dataScope"><el-option label="全部数据" :value="1" /><el-option label="本部门及下级" :value="2" /><el-option label="仅本人" :value="3" /></el-select></el-form-item><el-form-item label="状态"><el-switch v-model="roleForm.status" :active-value="1" :inactive-value="0" /></el-form-item><el-form-item label="备注"><el-input v-model="roleForm.remark" type="textarea" /></el-form-item></el-form>
+      <el-form v-else-if="mode === 'roles'" :model="roleForm" label-position="top">
+        <el-form-item label="角色名称" required>
+          <el-input v-model="roleForm.name" />
+        </el-form-item>
+        <el-form-item label="角色编码" required>
+          <el-input v-model="roleForm.code" placeholder="例如 HR_MANAGER" />
+        </el-form-item>
+        <el-form-item label="数据范围">
+          <el-select v-model="roleForm.dataScope">
+            <el-option label="全部数据" :value="1" />
+            <el-option label="本部门及下级" :value="2" />
+            <el-option label="仅本人" :value="3" />
+          </el-select>
+        </el-form-item>
+        <el-alert
+          :title="dataScopeDescription"
+          type="info"
+          show-icon
+          :closable="false"
+        />
+        <el-form-item label="状态">
+          <el-switch v-model="roleForm.status" :active-value="1" :inactive-value="0" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="roleForm.remark" type="textarea" />
+        </el-form-item>
+      </el-form>
       <el-form v-else :model="menuForm" label-position="top"><div class="form-grid"><el-form-item label="名称" required><el-input v-model="menuForm.name" /></el-form-item><el-form-item label="类型" required><el-select v-model="menuForm.type"><el-option label="目录" :value="1" /><el-option label="菜单" :value="2" /><el-option label="按钮" :value="3" /></el-select></el-form-item><el-form-item label="上级"><el-select v-model="menuForm.parentId" clearable><el-option v-for="item in menus.filter(i => i.id !== editingId && i.type !== 3)" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><el-form-item label="排序"><el-input-number v-model="menuForm.sortOrder" /></el-form-item><el-form-item label="路由"><el-input v-model="menuForm.routePath" /></el-form-item><el-form-item label="组件"><el-input v-model="menuForm.component" /></el-form-item><el-form-item label="权限标识"><el-input v-model="menuForm.permissionCode" /></el-form-item><el-form-item label="图标"><el-input v-model="menuForm.icon" /></el-form-item><el-form-item label="可见"><el-switch v-model="menuForm.visible" /></el-form-item><el-form-item label="状态"><el-switch v-model="menuForm.status" :active-value="1" :inactive-value="0" /></el-form-item></div></el-form>
       <template #footer><el-button @click="editorOpen = false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
     </el-drawer>

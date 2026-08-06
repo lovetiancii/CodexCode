@@ -10,11 +10,23 @@
 | 菜单 | `GET/POST /menus`、`PUT/DELETE /menus/{id}` |
 | 组织 | `GET/POST /departments`、`PUT/DELETE /departments/{id}`、`GET/POST /positions`、`PUT/DELETE /positions/{id}` |
 | 员工 | `GET/POST /employees`、`GET/PUT /employees/{id}`、`POST /employees/{id}/regularize`、`POST /employees/{id}/terminate`、`POST /employees/{id}/archive` |
-| 简历 | `GET/POST /resumes`、`GET/PUT /resumes/{id}`、`POST /resumes/{id}/status` |
+| 简历 | `GET/POST /resumes`、`GET/PUT /resumes/{id}`、`PUT /resumes/{id}/attachment`、`POST /resumes/{id}/status` |
 | 面试 | `GET /resumes/{id}/interviewers`、`POST/GET /resumes/{id}/interviews`、`POST /resumes/{id}/interviews/{interviewId}/complete` |
 | 录用 | `POST /resumes/{id}/confirm-offer`、`POST /resumes/{id}/confirm-entry` |
 | 合同 | `GET/POST /contracts`、`GET/PUT /contracts/{id}`、`GET /contracts/expiring`、`POST /contracts/{id}/activate|terminate|renew|archive` |
 | 文件 | `POST /files`（multipart）、`GET /files?businessType=&businessId=`、`GET /files/{id}/download`、`DELETE /files/{id}` |
+
+## 权限规则
+
+- 功能权限由角色绑定的菜单/操作权限码决定，接口以 `Permission` 特性强制校验，前端权限只负责隐藏无权操作入口。
+- “安排面试”使用 `resume:schedule`，“提交面试评价”使用 `resume:evaluate`，面试官默认只授予评价权限。
+- 多角色数据范围取最大授权：`All` 大于 `DepartmentAndChildren`，后者大于 `Self`。
+- 员工“仅本人”按当前用户绑定的 `employee_id` 判断；合同按合同的 `employee_id` 判断。
+- 简历“仅本人”按 `owner_user_id` 或本人作为面试官的面试记录判断。
+- 本部门及下级通过当前用户 `department_id` 递归计算部门集合；员工、应聘岗位、合同及附件均继承该集合过滤。
+- 文件上传、列表、下载和删除除功能权限外，还会校验所关联简历、员工、入职记录或合同的数据权限。
+
+简历附件采用两阶段关联：先创建简历取得 ID，再调用 `POST /files` 上传，最后调用 `PUT /resumes/{id}/attachment` 将返回的文件 ID 设为当前附件。
 | 工作流 | `POST /workflows`、`GET /workflows/{instanceId}`、`POST /workflows/{instanceId}/nodes/{nodeId}/decision` |
 | 审计 | `GET /audit-logs` |
 

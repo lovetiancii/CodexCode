@@ -50,11 +50,17 @@ public sealed record ResumeDto(
     string? WorkExperience,
     string? Skills,
     string AppliedPositionId,
+    string? Source,
     string? AttachmentFileId,
+    string? OwnerUserId,
     ResumeStatus Status,
     byte CurrentRound,
     string? RejectReason,
     string? Remark,
+    int Version);
+
+public sealed record ResumeAttachmentRequest(
+    string? AttachmentFileId,
     int Version);
 
 public sealed record ResumeQuery(

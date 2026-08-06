@@ -14,8 +14,8 @@ declare module 'vue-router' {
 const businessRoutes: RouteRecordRaw[] = [
   { path: 'dashboard', name: 'dashboard', component: () => import('@/views/dashboard/DashboardView.vue'), meta: { title: '首页' } },
   { path: 'employees', name: 'employees', component: () => import('@/views/employee/EmployeeView.vue'), meta: { title: '员工档案', permission: 'employee:view', mode: 'employees' } },
-  { path: 'departments', name: 'departments', component: () => import('@/views/employee/EmployeeView.vue'), meta: { title: '组织架构', permission: 'organization:manage', mode: 'departments' } },
-  { path: 'positions', name: 'positions', component: () => import('@/views/employee/EmployeeView.vue'), meta: { title: '岗位管理', permission: 'organization:manage', mode: 'positions' } },
+  { path: 'departments', name: 'departments', component: () => import('@/views/employee/EmployeeView.vue'), meta: { title: '组织架构', permission: 'organization:view', mode: 'departments' } },
+  { path: 'positions', name: 'positions', component: () => import('@/views/employee/EmployeeView.vue'), meta: { title: '岗位管理', permission: 'organization:view', mode: 'positions' } },
   { path: 'recruitment/board', name: 'recruitment-board', component: () => import('@/views/recruitment/RecruitmentView.vue'), meta: { title: '招聘看板', permission: 'resume:view', mode: 'board' } },
   { path: 'recruitment/resumes', name: 'resumes', component: () => import('@/views/recruitment/RecruitmentView.vue'), meta: { title: '简历管理', permission: 'resume:view', mode: 'resumes' } },
   { path: 'recruitment/interviews', name: 'interviews', component: () => import('@/views/recruitment/RecruitmentView.vue'), meta: { title: '面试安排与记录', permission: 'resume:view', mode: 'interviews' } },

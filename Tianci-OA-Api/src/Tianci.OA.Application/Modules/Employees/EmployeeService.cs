@@ -12,6 +12,7 @@ public sealed class EmployeeService(
     IRepository<Department> departments,
     IRepository<Position> positions,
     ISensitiveDataProtector protector,
+    IDataScopeService dataScope,
     ISnowflakeIdGenerator ids,
     IClock clock,
     ICurrentUser user) : IEmployeeService
@@ -28,6 +29,19 @@ public sealed class EmployeeService(
                 || employee.Name.Contains(keyword)
                 || employee.EmployeeNo.Contains(keyword)
                 || employee.Phone.Contains(keyword));
+
+        var scope = await dataScope.GetCurrentAsync(ct);
+        if (scope.Scope == DataScope.DepartmentAndChildren)
+        {
+            var departmentIds = scope.DepartmentIds.ToArray();
+            predicate = predicate.And(employee =>
+                departmentIds.Contains(employee.DepartmentId));
+        }
+        else if (scope.Scope == DataScope.Self)
+        {
+            var employeeId = scope.EmployeeId ?? -1;
+            predicate = predicate.And(employee => employee.Id == employeeId);
+        }
 
         if (did.HasValue)
         {
@@ -199,6 +213,8 @@ public sealed class EmployeeService(
     {
         var did = IdParser.Parse(r.DepartmentId, "departmentId");
         var pid = IdParser.Parse(r.PositionId, "positionId");
+        await dataScope.EnsureCanAccessDepartmentAsync(did, ct);
+
         if (!await departments.ExistsAsync(x => x.Id == did && !x.IsDeleted && x.Status == EnabledStatus.Enabled, ct))
         {
             throw new NotFoundException("部门不存在或未启用");
@@ -251,10 +267,14 @@ public sealed class EmployeeService(
     private async Task<Employee> GetRequired(string id, CancellationToken ct)
     {
         var employeeId = IdParser.Parse(id);
-        return await employees.FirstAsync(
+        var employee = await employees.FirstAsync(
                 employee => employee.Id == employeeId && !employee.IsDeleted,
                 ct)
             ?? throw new NotFoundException("员工不存在");
+
+        await dataScope.EnsureCanAccessEmployeeAsync(employeeId, ct);
+
+        return employee;
     }
 
     private static EmployeeDto ToDto(Employee employee)

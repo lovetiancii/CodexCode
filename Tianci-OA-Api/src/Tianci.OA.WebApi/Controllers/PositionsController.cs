@@ -7,7 +7,6 @@ namespace Tianci.OA.WebApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Permission("organization:manage")]
 [Route("api/v1/positions")]
 public sealed class PositionsController : ControllerBase
 {
@@ -19,6 +18,7 @@ public sealed class PositionsController : ControllerBase
     }
 
     [HttpGet]
+    [Permission("organization:view")]
     public Task<IReadOnlyList<PositionDto>> List(
         [FromQuery] string? departmentId,
         CancellationToken cancellationToken)
@@ -29,6 +29,7 @@ public sealed class PositionsController : ControllerBase
     }
 
     [HttpPost]
+    [Permission("organization:manage")]
     public Task<PositionDto> Create(
         PositionRequest request,
         CancellationToken cancellationToken)
@@ -39,6 +40,7 @@ public sealed class PositionsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Permission("organization:manage")]
     public Task<PositionDto> Update(
         string id,
         PositionRequest request,
@@ -51,6 +53,7 @@ public sealed class PositionsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Permission("organization:manage")]
     public async Task<IActionResult> Delete(
         string id,
         CancellationToken cancellationToken)

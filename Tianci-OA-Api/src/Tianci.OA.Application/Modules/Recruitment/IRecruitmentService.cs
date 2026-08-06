@@ -20,6 +20,11 @@ public interface IRecruitmentService
         int version,
         CancellationToken cancellationToken);
 
+    Task<ResumeDto> SetAttachmentAsync(
+        string id,
+        ResumeAttachmentRequest request,
+        CancellationToken cancellationToken);
+
     Task ChangeStatusAsync(
         string id,
         ChangeResumeStatusRequest request,

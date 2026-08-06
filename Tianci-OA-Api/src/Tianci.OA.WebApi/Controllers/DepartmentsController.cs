@@ -7,7 +7,6 @@ namespace Tianci.OA.WebApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Permission("organization:manage")]
 [Route("api/v1/departments")]
 public sealed class DepartmentsController : ControllerBase
 {
@@ -19,6 +18,7 @@ public sealed class DepartmentsController : ControllerBase
     }
 
     [HttpGet]
+    [Permission("organization:view")]
     public Task<IReadOnlyList<DepartmentDto>> List(
         CancellationToken cancellationToken)
     {
@@ -26,6 +26,7 @@ public sealed class DepartmentsController : ControllerBase
     }
 
     [HttpPost]
+    [Permission("organization:manage")]
     public Task<DepartmentDto> Create(
         DepartmentRequest request,
         CancellationToken cancellationToken)
@@ -36,6 +37,7 @@ public sealed class DepartmentsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Permission("organization:manage")]
     public Task<DepartmentDto> Update(
         string id,
         DepartmentRequest request,
@@ -48,6 +50,7 @@ public sealed class DepartmentsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Permission("organization:manage")]
     public async Task<IActionResult> Delete(
         string id,
         CancellationToken cancellationToken)

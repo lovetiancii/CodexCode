@@ -15,6 +15,7 @@ public sealed class IdentityService(
     IPasswordService passwords,
     ITokenIssuer tokens,
     IPermissionService permissions,
+    ICacheService cache,
     ISnowflakeIdGenerator ids,
     IClock clock,
     ICurrentUser currentUser,
@@ -202,6 +203,7 @@ public sealed class IdentityService(
             user!.SecurityStamp = Guid.NewGuid().ToString("N");
             await users.UpdateAsync(user, ct);
             await uow.CommitAsync();
+            await InvalidateUserPermissionsAsync(userId);
         }
         catch
         {
@@ -224,6 +226,7 @@ public sealed class IdentityService(
         user.Status = UserStatus.Disabled;
         user.SecurityStamp = Guid.NewGuid().ToString("N");
         await users.UpdateAsync(user, ct);
+        await InvalidateUserPermissionsAsync(user.Id);
     }
 
     public async Task<IReadOnlyList<RoleDto>> GetRolesAsync(CancellationToken ct)
@@ -266,6 +269,8 @@ public sealed class IdentityService(
         role.Remark = request.Remark;
         EntityAudit.Update(role, clock, currentUser);
         await roles.UpdateAsync(role, ct);
+        await InvalidateRolePermissionsAsync(role.Id, ct);
+
         return mapper.Map<RoleDto>(role);
     }
 
@@ -312,6 +317,7 @@ public sealed class IdentityService(
 
             await roleMenus.InsertRangeAsync(bindings, ct);
             await uow.CommitAsync();
+            await InvalidateRolePermissionsAsync(roleId, ct);
         }
         catch
         {
@@ -332,6 +338,7 @@ public sealed class IdentityService(
         role.DeletedAt = clock.UtcNow;
         role.DeletedBy = currentUser.UserId;
         await roles.UpdateAsync(role, ct);
+        await InvalidateRolePermissionsAsync(role.Id, ct);
     }
 
     public async Task<IReadOnlyList<MenuDto>> GetMenusAsync(CancellationToken ct)
@@ -397,6 +404,41 @@ public sealed class IdentityService(
         });
 
         await userRoles.InsertRangeAsync(bindings, ct);
+    }
+
+    private Task InvalidateUserPermissionsAsync(long userId)
+    {
+        return cache.RemoveAsync($"oa:perm:user:{userId}");
+    }
+
+    private async Task InvalidateRolePermissionsAsync(
+        long roleId,
+        CancellationToken cancellationToken)
+    {
+        var bindings = await userRoles.ListAsync(
+            userRole => userRole.RoleId == roleId,
+            cancellationToken);
+        var keys = bindings
+            .Select(userRole => $"oa:perm:user:{userRole.UserId}")
+            .Distinct()
+            .ToArray();
+
+        foreach (var userId in bindings
+            .Select(userRole => userRole.UserId)
+            .Distinct())
+        {
+            var user = await users.GetByIdAsync(userId, cancellationToken);
+            if (user != null && !user.IsDeleted)
+            {
+                user.SecurityStamp = Guid.NewGuid().ToString("N");
+                await users.UpdateAsync(user, cancellationToken);
+            }
+        }
+
+        if (keys.Length > 0)
+        {
+            await cache.RemoveAsync(keys);
+        }
     }
 
     private SysMenu CreateMenu(MenuUpsertRequest r)

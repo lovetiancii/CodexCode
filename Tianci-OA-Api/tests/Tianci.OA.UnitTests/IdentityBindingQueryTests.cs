@@ -101,6 +101,7 @@ public sealed class IdentityBindingQueryTests
                 null!,
                 null!,
                 null!,
+                new StubCache(),
                 new StubIds(),
                 new StubClock(),
                 new StubCurrentUser(),

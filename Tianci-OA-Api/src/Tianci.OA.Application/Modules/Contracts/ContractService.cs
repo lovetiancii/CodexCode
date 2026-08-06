@@ -12,6 +12,7 @@ public sealed class ContractService(
     IRepository<EmployeeContract> contracts,
     IRepository<Employee> employees,
     IRepository<SysFile> files,
+    IDataScopeService dataScope,
     ISnowflakeIdGenerator ids,
     IClock clock,
     ICurrentUser user,
@@ -24,6 +25,9 @@ public sealed class ContractService(
         var page = new PageRequest(q.PageNumber, q.PageSize);
         Expression<Func<EmployeeContract, bool>> predicate =
             x => !x.IsDeleted && (keyword == "" || x.ContractNo.Contains(keyword));
+
+        predicate = await ApplyDataScopeAsync(predicate, ct);
+
         if (employeeId.HasValue)
         {
             var id = employeeId.Value;
@@ -159,12 +163,14 @@ public sealed class ContractService(
     {
         var today = clock.UtcNow.Date;
         var max = withinDays.HasValue ? today.AddDays(Math.Clamp(withinDays.Value, 0, 365)) : today.AddDays(365);
-        var list = await contracts.ListAsync(
-            contract => !contract.IsDeleted
-                && contract.Status == ContractStatus.Active
-                && contract.EndDate >= today
-                && contract.EndDate <= max,
-            ct);
+        Expression<Func<EmployeeContract, bool>> predicate = contract =>
+            !contract.IsDeleted
+            && contract.Status == ContractStatus.Active
+            && contract.EndDate >= today
+            && contract.EndDate <= max;
+        predicate = await ApplyDataScopeAsync(predicate, ct);
+
+        var list = await contracts.ListAsync(predicate, ct);
 
         return
         [
@@ -183,6 +189,8 @@ public sealed class ContractService(
         }
 
         var employeeId = IdParser.Parse(r.EmployeeId, "employeeId");
+        await dataScope.EnsureCanAccessEmployeeAsync(employeeId, ct);
+
         if (!await employees.ExistsAsync(x => x.Id == employeeId && !x.IsDeleted, ct))
         {
             throw new NotFoundException("员工不存在");
@@ -241,10 +249,42 @@ public sealed class ContractService(
     private async Task<EmployeeContract> Required(string id, CancellationToken ct)
     {
         var contractId = IdParser.Parse(id);
-        return await contracts.FirstAsync(
+        var contract = await contracts.FirstAsync(
                 contract => contract.Id == contractId && !contract.IsDeleted,
                 ct)
             ?? throw new NotFoundException("合同不存在");
+
+        await dataScope.EnsureCanAccessContractAsync(contractId, ct);
+
+        return contract;
+    }
+
+    private async Task<Expression<Func<EmployeeContract, bool>>> ApplyDataScopeAsync(
+        Expression<Func<EmployeeContract, bool>> predicate,
+        CancellationToken cancellationToken)
+    {
+        var scope = await dataScope.GetCurrentAsync(cancellationToken);
+        if (scope.Scope == DataScope.All)
+        {
+            return predicate;
+        }
+
+        if (scope.Scope == DataScope.Self)
+        {
+            var employeeId = scope.EmployeeId ?? -1;
+            return predicate.And(contract => contract.EmployeeId == employeeId);
+        }
+
+        var departmentIds = scope.DepartmentIds.ToArray();
+        var allowedEmployees = await employees.ListAsync(
+            employee => !employee.IsDeleted
+                && departmentIds.Contains(employee.DepartmentId),
+            cancellationToken);
+        var employeeIds = allowedEmployees
+            .Select(employee => employee.Id)
+            .ToArray();
+
+        return predicate.And(contract => employeeIds.Contains(contract.EmployeeId));
     }
 
     private static ContractDto ToDto(EmployeeContract contract)
